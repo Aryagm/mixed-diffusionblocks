@@ -1,7 +1,7 @@
 [project]
-name = "DiffusionBlocks"
+name = "mixed-diffusionblocks"
 version = "0.1.0"
-description = "Add your description here"
+description = "Mixed DiffusionBlocks for Apple Silicon LLM fine-tuning with MLX"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

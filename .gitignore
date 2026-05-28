@@ -212,6 +212,7 @@ __marimo__/
 
 /logs/
 /wandb/
+/corpora/
 sbatch.sh
 .slurm_cache/
 test.ipynb
