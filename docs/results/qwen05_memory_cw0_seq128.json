@@ -1,0 +1,31 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "layers": 24,
+  "batch_size": 1,
+  "seq_len": 128,
+  "num_blocks": 8,
+  "objective": "paper_ar",
+  "clean_lm_weight": 0.0,
+  "modes": {
+    "full": {
+      "ok": true,
+      "loss": 2.296875,
+      "seconds": 2.557474750035908,
+      "active_gb": 3.6808319315314293,
+      "cache_gb": 1.2049030158668756,
+      "peak_gb": 4.387547491118312
+    },
+    "dblock": {
+      "ok": true,
+      "loss": 49.75,
+      "seconds": 0.3001667499775067,
+      "block_range": [
+        3,
+        6
+      ],
+      "active_gb": 1.1701971180737019,
+      "cache_gb": 0.6491726562380791,
+      "peak_gb": 1.5624754261225462
+    }
+  }
+}

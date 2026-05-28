@@ -1,0 +1,23 @@
+{
+  "model": "mlx-community/Qwen2.5-7B-Instruct-bf16",
+  "layers": 28,
+  "batch_size": 1,
+  "seq_len": 512,
+  "num_blocks": 8,
+  "objective": "paper_ar",
+  "clean_lm_weight": 100.0,
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "loss": 1792.0,
+      "seconds": 5.5449015839840285,
+      "block_range": [
+        4,
+        7
+      ],
+      "active_gb": 18.09213363006711,
+      "cache_gb": 5.867995483800769,
+      "peak_gb": 19.206447057425976
+    }
+  }
+}

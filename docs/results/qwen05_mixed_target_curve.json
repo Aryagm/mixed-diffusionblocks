@@ -1,0 +1,38 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "target": "100-step full bf16 next-token CE",
+  "target_ce": 0.0279541015625,
+  "batch_size": 1,
+  "seq_len": 128,
+  "clean_lm_weight": 100.0,
+  "records": [
+    {
+      "steps": 100,
+      "train_seconds": 11.637515167007223,
+      "next_token_ce": 0.04498291015625,
+      "target_ce": 0.0279541015625,
+      "hit_target": false
+    },
+    {
+      "steps": 200,
+      "train_seconds": 22.920205041998997,
+      "next_token_ce": 0.061767578125,
+      "target_ce": 0.0279541015625,
+      "hit_target": false
+    },
+    {
+      "steps": 300,
+      "train_seconds": 34.66674029198475,
+      "next_token_ce": 0.035888671875,
+      "target_ce": 0.0279541015625,
+      "hit_target": false
+    },
+    {
+      "steps": 400,
+      "train_seconds": 46.2133522919612,
+      "next_token_ce": 0.0167236328125,
+      "target_ce": 0.0279541015625,
+      "hit_target": true
+    }
+  ]
+}

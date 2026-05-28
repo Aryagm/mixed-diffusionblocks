@@ -1,0 +1,52 @@
+{
+  "model": "mlx-community/Qwen2.5-1.5B-Instruct-bf16",
+  "target": "100-step full bf16 next-token CE",
+  "target_ce": 0.0306,
+  "batch_size": 1,
+  "seq_len": 128,
+  "clean_lm_weight": 100.0,
+  "records": [
+    {
+      "steps": 100,
+      "train_seconds": 29.976343500020448,
+      "next_token_ce": 0.04168701171875,
+      "target_ce": 0.0306,
+      "hit_target": false
+    },
+    {
+      "steps": 200,
+      "train_seconds": 59.6165608750307,
+      "next_token_ce": 0.05877685546875,
+      "target_ce": 0.0306,
+      "hit_target": false
+    },
+    {
+      "steps": 300,
+      "train_seconds": 90.32340537500568,
+      "next_token_ce": 0.04620361328125,
+      "target_ce": 0.0306,
+      "hit_target": false
+    },
+    {
+      "steps": 400,
+      "train_seconds": 120.44496337499004,
+      "next_token_ce": 0.0401611328125,
+      "target_ce": 0.0306,
+      "hit_target": false
+    },
+    {
+      "steps": 500,
+      "train_seconds": 151.9615224589943,
+      "next_token_ce": 0.0404052734375,
+      "target_ce": 0.0306,
+      "hit_target": false
+    },
+    {
+      "steps": 600,
+      "train_seconds": 183.7110370839946,
+      "next_token_ce": 0.0250244140625,
+      "target_ce": 0.0306,
+      "hit_target": true
+    }
+  ]
+}

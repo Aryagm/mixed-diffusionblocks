@@ -1,0 +1,19 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "data": "corpora/wikitext2/train.txt",
+  "val_data": "corpora/wikitext2/validation.txt",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 128,
+  "eval_batches": 16,
+  "max_tokens": 200000,
+  "modes": {
+    "full": {
+      "ok": true,
+      "before": 2.484375,
+      "after": 2.5,
+      "delta": -0.015625,
+      "seconds": 16.449150957982056
+    }
+  }
+}

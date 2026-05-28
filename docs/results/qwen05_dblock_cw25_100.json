@@ -1,0 +1,26 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "data": "sample",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 128,
+  "eval_batches": 8,
+  "max_tokens": 20000,
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "objective": "paper_ar",
+      "clean_lm_weight": 25.0,
+      "before": 146.875,
+      "after": 26.2978515625,
+      "delta": 120.5771484375,
+      "diffusion_ce_before": 135.875,
+      "diffusion_ce_after": 99.6875,
+      "diffusion_ce_delta": 36.1875,
+      "next_token_ce_before": 2.3671875,
+      "next_token_ce_after": 0.089599609375,
+      "next_token_ce_delta": 2.277587890625,
+      "seconds": 10.475979249982629
+    }
+  }
+}

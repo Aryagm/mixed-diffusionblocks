@@ -1,0 +1,22 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "dataset": "Salesforce/wikitext wikitext-2-raw-v1",
+  "train_data": "corpora/wikitext2/train.txt",
+  "val_data": "corpora/wikitext2/validation.txt",
+  "target": "100-step full bf16 next-token CE with deterministic validation",
+  "target_ce": 2.5,
+  "batch_size": 1,
+  "seq_len": 128,
+  "eval_batches": 16,
+  "max_tokens": 200000,
+  "clean_lm_weight": 100.0,
+  "records": [
+    {
+      "steps": 100,
+      "train_seconds": 11.307754250010476,
+      "next_token_ce": 2.390625,
+      "target_ce": 2.5,
+      "hit_target": true
+    }
+  ]
+}
