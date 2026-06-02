@@ -13,7 +13,11 @@ import numpy as np
 
 from llm_dblocks.adapters import load_mlx_lm_adapter
 from llm_dblocks.data import batch_iterator, load_text, tokenize_text
-from llm_dblocks.trainer import DBlockTrainer, DBlockTrainingConfig
+from llm_dblocks.trainer import (
+    DBlockTrainer,
+    DBlockTrainingConfig,
+    balanced_block_ranges,
+)
 
 
 def scalar(x) -> float:
@@ -23,6 +27,30 @@ def scalar(x) -> float:
 def split_tokens(tokens: np.ndarray, val_fraction: float = 0.1):
     split = max(int(len(tokens) * (1.0 - val_fraction)), 1)
     return tokens[:split], tokens[split:]
+
+
+def normalize_hidden(x: mx.array) -> mx.array:
+    denom = mx.sqrt(mx.mean(x * x))
+    return x / mx.maximum(denom, mx.array(1e-6, dtype=x.dtype))
+
+
+def calibrate_drift_frames(adapter, batch, num_blocks: int, sigma: float):
+    clean = normalize_hidden(adapter.embed(batch["input_ids"]))
+    noisy = clean + sigma * mx.random.normal(clean.shape, dtype=clean.dtype)
+    scores = []
+    adapter.model.eval()
+    for layer_idx in range(adapter.num_layers):
+        clean = adapter.run_layers(clean, layer_idx, layer_idx + 1)
+        noisy = adapter.run_layers(noisy, layer_idx, layer_idx + 1)
+        drift = mx.sqrt(mx.mean((noisy - clean) ** 2))
+        scale = mx.maximum(mx.sqrt(mx.mean(clean**2)), mx.array(1e-6, dtype=clean.dtype))
+        score = drift / scale
+        mx.eval(score, clean, noisy)
+        scores.append(float(score.item()))
+
+    ranges = balanced_block_ranges(scores, num_blocks)
+    boundaries = tuple(end for _, end in ranges[:-1])
+    return boundaries, ranges, scores
 
 
 def eval_full(adapter, batches, num_batches: int) -> float:
@@ -82,7 +110,14 @@ def eval_dblock_metrics(
         metric_values = {
             key: value
             for key, value in metrics.items()
-            if key in {"loss", "denoise_loss", "aux_lm_loss", "clean_lm_loss"}
+            if key
+            in {
+                "loss",
+                "denoise_loss",
+                "aux_lm_loss",
+                "clean_lm_loss",
+                "local_lm_loss",
+            }
         }
         mx.eval(*metric_values.values())
         for key, value in metric_values.items():
@@ -157,6 +192,25 @@ def run_full(args):
 def run_dblock(args):
     adapter, tokenizer = load_mlx_lm_adapter(args.model)
     train_tokens, val_tokens = load_tokens(args, tokenizer)
+    frame_boundaries = None
+    frame_ranges = None
+    frame_scores = None
+    if args.frame_strategy == "drift":
+        calibration_batches = batch_iterator(
+            train_tokens,
+            args.batch_size,
+            args.seq_len,
+            shuffle=False,
+        )
+        calibration_batch = next(calibration_batches)
+        frame_boundaries, frame_ranges, frame_scores = calibrate_drift_frames(
+            adapter,
+            calibration_batch,
+            args.num_blocks,
+            args.frame_calibration_sigma,
+        )
+        print(f"drift_frames boundaries={frame_boundaries} ranges={frame_ranges}")
+
     config = DBlockTrainingConfig(
         num_blocks=args.num_blocks,
         lr=args.lr,
@@ -166,6 +220,11 @@ def run_dblock(args):
         gamma=args.gamma,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
+        clean_lm_interval=args.clean_lm_interval,
+        clean_lm_seq_len=args.clean_lm_seq_len,
+        clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
+        local_lm_weight=args.local_lm_weight,
+        block_layer_boundaries=frame_boundaries,
         objective=args.objective,
     )
     trainer = DBlockTrainer(adapter, config)
@@ -204,7 +263,14 @@ def run_dblock(args):
     return {
         "ok": True,
         "objective": args.objective,
+        "frame_strategy": args.frame_strategy,
+        "block_ranges": trainer.ranges,
+        "frame_scores": frame_scores,
         "clean_lm_weight": args.clean_lm_weight,
+        "clean_lm_interval": args.clean_lm_interval,
+        "clean_lm_seq_len": args.clean_lm_seq_len,
+        "clean_lm_full_warmup_steps": args.clean_lm_full_warmup_steps,
+        "local_lm_weight": args.local_lm_weight,
         "before": before,
         "after": after,
         "delta": before - after,
@@ -258,11 +324,17 @@ def main(args):
                 f"after={r['after']:.4f} delta={r['delta']:.4f} "
                 f"denoise_after={r['metrics_after']['denoise_loss']:.4f} "
                 f"clean_after={r['metrics_after']['clean_lm_loss']:.4f} "
+                f"local_after={r['metrics_after']['local_lm_loss']:.4f} "
                 f"diff_before={r['diffusion_ce_before']:.4f} "
                 f"diff_after={r['diffusion_ce_after']:.4f} "
                 f"ntp_before={r['next_token_ce_before']:.4f} "
                 f"ntp_after={r['next_token_ce_after']:.4f} "
+                f"frame_strategy={r['frame_strategy']} "
                 f"clean_lm_weight={r['clean_lm_weight']:.4f} "
+                f"clean_lm_interval={r['clean_lm_interval']} "
+                f"clean_lm_seq_len={r['clean_lm_seq_len']} "
+                f"clean_lm_full_warmup_steps={r['clean_lm_full_warmup_steps']} "
+                f"local_lm_weight={r['local_lm_weight']:.4f} "
                 f"seconds={r['seconds']:.2f}"
             )
         except Exception as exc:
@@ -298,6 +370,12 @@ if __name__ == "__main__":
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
     parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_interval", type=int, default=1)
+    parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
+    parser.add_argument("--local_lm_weight", type=float, default=0.0)
+    parser.add_argument("--frame_strategy", choices=["uniform", "drift"], default="uniform")
+    parser.add_argument("--frame_calibration_sigma", type=float, default=0.1)
     parser.add_argument("--diffusion_eval_steps", type=int, default=8)
     parser.add_argument("--log_every", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)

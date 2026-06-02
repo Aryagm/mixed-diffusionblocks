@@ -35,6 +35,11 @@ class DBlockTrainingConfig:
     gamma: float = 0.05
     aux_lm_weight: float = 0.1
     clean_lm_weight: float = 0.0
+    clean_lm_interval: int = 1
+    clean_lm_seq_len: int = 0
+    clean_lm_full_warmup_steps: int = 0
+    local_lm_weight: float = 0.0
+    block_layer_boundaries: tuple[int, ...] | None = None
     gradient_clip_norm: float = 1.0
     objective: str = "paper_ar"
     sigma_data: float = 0.5
@@ -51,6 +56,55 @@ def block_ranges(num_layers: int, num_blocks: int) -> list[tuple[int, int]]:
         end = round((i + 1) * num_layers / num_blocks)
         ranges.append((start, end))
     return ranges
+
+
+def block_ranges_from_boundaries(
+    num_layers: int,
+    boundaries: tuple[int, ...],
+) -> list[tuple[int, int]]:
+    if not boundaries:
+        return [(0, num_layers)]
+    prev = 0
+    ranges = []
+    for boundary in boundaries:
+        if boundary <= prev or boundary >= num_layers:
+            raise ValueError("block boundaries must be increasing inner layer indexes")
+        ranges.append((prev, boundary))
+        prev = boundary
+    ranges.append((prev, num_layers))
+    return ranges
+
+
+def balanced_block_ranges(
+    layer_scores: list[float],
+    num_blocks: int,
+) -> list[tuple[int, int]]:
+    num_layers = len(layer_scores)
+    if num_blocks < 1:
+        raise ValueError("num_blocks must be >= 1")
+    if num_blocks > num_layers:
+        raise ValueError("num_blocks cannot exceed number of layer scores")
+    if num_blocks == 1:
+        return [(0, num_layers)]
+
+    scores = [max(float(score), 1e-9) for score in layer_scores]
+    total = sum(scores)
+    boundaries = []
+    cumulative = 0.0
+    next_target_idx = 1
+    for layer_idx, score in enumerate(scores, start=1):
+        cumulative += score
+        remaining_boundaries = num_blocks - next_target_idx
+        remaining_layers = num_layers - layer_idx
+        target = total * next_target_idx / num_blocks
+        if (
+            next_target_idx < num_blocks
+            and cumulative >= target
+            and remaining_layers >= remaining_boundaries
+        ):
+            boundaries.append(layer_idx)
+            next_target_idx += 1
+    return block_ranges_from_boundaries(num_layers, tuple(boundaries[: num_blocks - 1]))
 
 
 def block_sigmas(config: DBlockTrainingConfig) -> list[float]:
@@ -103,7 +157,14 @@ class DBlockTrainer:
     def __init__(self, adapter: ModelAdapter, config: DBlockTrainingConfig):
         self.adapter = adapter
         self.config = config
-        self.ranges = block_ranges(adapter.num_layers, config.num_blocks)
+        if config.block_layer_boundaries is None:
+            self.ranges = block_ranges(adapter.num_layers, config.num_blocks)
+        else:
+            self.ranges = block_ranges_from_boundaries(
+                adapter.num_layers,
+                config.block_layer_boundaries,
+            )
+            self.config.num_blocks = len(self.ranges)
         self.sigmas = block_sigmas(config)
         self.adapter.freeze_for_dblocks()
         self.optimizers = [
@@ -151,7 +212,34 @@ class DBlockTrainer:
         weights = (sigmas**2 + sigma_data**2) / (sigmas * sigma_data) ** 2
         return c_skip, c_out, c_in, weights
 
-    def clean_next_token_loss(self, model, batch: dict[str, mx.array]) -> mx.array:
+    def clean_anchor_batch(
+        self,
+        batch: dict[str, mx.array],
+        *,
+        force_full: bool = False,
+    ) -> dict[str, mx.array]:
+        if force_full:
+            return batch
+        anchor_len = int(self.config.clean_lm_seq_len or 0)
+        seq_len = batch["input_ids"].shape[1]
+        if anchor_len <= 0 or anchor_len >= seq_len:
+            return batch
+
+        start = random.randint(0, seq_len - anchor_len)
+        end = start + anchor_len
+        return {
+            "input_ids": batch["input_ids"][:, start:end],
+            "labels": batch["labels"][:, start:end],
+        }
+
+    def clean_next_token_loss(
+        self,
+        model,
+        batch: dict[str, mx.array],
+        *,
+        force_full: bool = False,
+    ) -> mx.array:
+        batch = self.clean_anchor_batch(batch, force_full=force_full)
         logits = model(batch["input_ids"])
         return nn.losses.cross_entropy(
             logits.reshape(-1, self.adapter.vocab_size),
@@ -159,15 +247,44 @@ class DBlockTrainer:
             reduction="mean",
         )
 
-    def loss(self, model, batch: dict[str, mx.array], block_idx: int | None = None):
+    def loss(
+        self,
+        model,
+        batch: dict[str, mx.array],
+        block_idx: int | None = None,
+        use_clean_lm: bool | None = None,
+        force_full_clean_lm: bool = False,
+    ):
         if self.config.objective == "hidden":
-            return self.hidden_state_loss(model, batch, block_idx=block_idx)
+            return self.hidden_state_loss(
+                model,
+                batch,
+                block_idx=block_idx,
+                use_clean_lm=use_clean_lm,
+                force_full_clean_lm=force_full_clean_lm,
+            )
         if self.config.objective == "paper_ar":
-            return self.paper_ar_loss(model, batch, block_idx=block_idx)
+            return self.paper_ar_loss(
+                model,
+                batch,
+                block_idx=block_idx,
+                use_clean_lm=use_clean_lm,
+                force_full_clean_lm=force_full_clean_lm,
+            )
         raise ValueError(f"Unknown objective: {self.config.objective}")
 
+    def should_use_clean_lm(self, use_clean_lm: bool | None) -> bool:
+        if self.config.clean_lm_weight <= 0:
+            return False
+        return True if use_clean_lm is None else use_clean_lm
+
     def hidden_state_loss(
-        self, model, batch: dict[str, mx.array], block_idx: int | None = None
+        self,
+        model,
+        batch: dict[str, mx.array],
+        block_idx: int | None = None,
+        use_clean_lm: bool | None = None,
+        force_full_clean_lm: bool = False,
     ):
         input_ids = batch["input_ids"]
         labels = batch["labels"]
@@ -195,25 +312,40 @@ class DBlockTrainer:
             labels.reshape(-1),
             reduction="mean",
         )
-        if self.config.clean_lm_weight > 0:
-            clean_lm_loss = self.clean_next_token_loss(model, batch)
+        if self.should_use_clean_lm(use_clean_lm):
+            clean_lm_loss = self.clean_next_token_loss(
+                model,
+                batch,
+                force_full=force_full_clean_lm,
+            )
         else:
             clean_lm_loss = mx.array(0.0, dtype=denoise_loss.dtype)
+        if self.config.local_lm_weight > 0:
+            local_lm_loss = aux_lm_loss
+        else:
+            local_lm_loss = mx.array(0.0, dtype=denoise_loss.dtype)
         loss = (
             denoise_loss
             + self.config.aux_lm_weight * aux_lm_loss
             + self.config.clean_lm_weight * clean_lm_loss
+            + self.config.local_lm_weight * local_lm_loss
         )
         return loss, {
             "loss": loss,
             "denoise_loss": denoise_loss,
             "aux_lm_loss": aux_lm_loss,
             "clean_lm_loss": clean_lm_loss,
+            "local_lm_loss": local_lm_loss,
             "block": mx.array(block_idx),
         }
 
     def paper_ar_loss(
-        self, model, batch: dict[str, mx.array], block_idx: int | None = None
+        self,
+        model,
+        batch: dict[str, mx.array],
+        block_idx: int | None = None,
+        use_clean_lm: bool | None = None,
+        force_full_clean_lm: bool = False,
     ):
         input_ids = batch["input_ids"]
         if block_idx is None:
@@ -231,6 +363,7 @@ class DBlockTrainer:
         hidden = mx.stop_gradient(hidden)
         hidden = self.adapter.run_layers(hidden, start, end, mask=mask)
 
+        clean_hidden = hidden[:, : input_ids.shape[1], :]
         noisy_hidden = hidden[:, input_ids.shape[1] :, :]
         model_out = noisy_hidden * c_out + noisy * c_skip
         noisy_logits = self.adapter.logits_from_hidden(model_out)
@@ -242,16 +375,34 @@ class DBlockTrainer:
         losses = losses.reshape(input_ids.shape[0], -1)
         token_loss = mx.mean(losses * weights.reshape(-1, 1))
         ce_loss = mx.mean(losses)
-        if self.config.clean_lm_weight > 0:
-            clean_lm_loss = self.clean_next_token_loss(model, batch)
+        if self.should_use_clean_lm(use_clean_lm):
+            clean_lm_loss = self.clean_next_token_loss(
+                model,
+                batch,
+                force_full=force_full_clean_lm,
+            )
         else:
             clean_lm_loss = mx.array(0.0, dtype=token_loss.dtype)
-        loss = token_loss + self.config.clean_lm_weight * clean_lm_loss
+        if self.config.local_lm_weight > 0:
+            local_logits = self.adapter.logits_from_hidden(clean_hidden)
+            local_lm_loss = nn.losses.cross_entropy(
+                local_logits.reshape(-1, self.adapter.vocab_size),
+                batch["labels"].reshape(-1),
+                reduction="mean",
+            )
+        else:
+            local_lm_loss = mx.array(0.0, dtype=token_loss.dtype)
+        loss = (
+            token_loss
+            + self.config.clean_lm_weight * clean_lm_loss
+            + self.config.local_lm_weight * local_lm_loss
+        )
         return loss, {
             "loss": loss,
             "denoise_loss": token_loss,
             "aux_lm_loss": ce_loss,
             "clean_lm_loss": clean_lm_loss,
+            "local_lm_loss": local_lm_loss,
             "block": mx.array(block_idx),
         }
 
@@ -329,8 +480,18 @@ class DBlockTrainer:
         )
 
     def train(self, batches, *, iters: int, log_every: int = 10):
-        def loss_fn(model, batch, block_idx):
-            loss, _ = self.loss(model, batch, block_idx=block_idx)
+        clean_lm_interval = max(int(self.config.clean_lm_interval), 1)
+
+        full_anchor_warmup_steps = max(int(self.config.clean_lm_full_warmup_steps), 0)
+
+        def loss_fn(model, batch, block_idx, use_clean_lm, force_full_clean_lm):
+            loss, _ = self.loss(
+                model,
+                batch,
+                block_idx=block_idx,
+                use_clean_lm=use_clean_lm,
+                force_full_clean_lm=force_full_clean_lm,
+            )
             return loss
 
         loss_and_grad = nn.value_and_grad(self.adapter.model, loss_fn)
@@ -339,6 +500,7 @@ class DBlockTrainer:
             "denoise_loss": 0.0,
             "aux_lm_loss": 0.0,
             "clean_lm_loss": 0.0,
+            "local_lm_loss": 0.0,
         }
         start_time = time.perf_counter()
         last_time = start_time
@@ -346,14 +508,28 @@ class DBlockTrainer:
         for step in range(1, iters + 1):
             batch = next(batches)
             block_idx = random.randrange(self.config.num_blocks)
+            force_full_clean_lm = step <= full_anchor_warmup_steps
+            use_clean_lm = force_full_clean_lm or step % clean_lm_interval == 0
             self.set_trainable_block(block_idx)
             optimizer = self.optimizers[block_idx]
 
-            loss, grads = loss_and_grad(self.adapter.model, batch, block_idx)
+            loss, grads = loss_and_grad(
+                self.adapter.model,
+                batch,
+                block_idx,
+                use_clean_lm,
+                force_full_clean_lm,
+            )
             if self.config.gradient_clip_norm > 0:
                 grads, _ = optim.clip_grad_norm(grads, self.config.gradient_clip_norm)
             optimizer.update(self.adapter.model, grads)
-            metrics = self.loss(self.adapter.model, batch, block_idx=block_idx)[1]
+            metrics = self.loss(
+                self.adapter.model,
+                batch,
+                block_idx=block_idx,
+                use_clean_lm=use_clean_lm,
+                force_full_clean_lm=force_full_clean_lm,
+            )[1]
             mx.eval(self.adapter.model.parameters(), optimizer.state, *metrics.values())
 
             for key in totals:
@@ -370,6 +546,7 @@ class DBlockTrainer:
                     f"denoise={summary['denoise_loss']:.4f} "
                     f"aux_lm={summary['aux_lm_loss']:.4f} "
                     f"clean_lm={summary['clean_lm_loss']:.4f} "
+                    f"local_lm={summary['local_lm_loss']:.4f} "
                     f"steps_s={steps_s:.2f}"
                 )
                 totals = {key: 0.0 for key in totals}

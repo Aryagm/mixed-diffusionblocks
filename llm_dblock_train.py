@@ -55,6 +55,10 @@ def main(args):
         gamma=args.gamma,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
+        clean_lm_interval=args.clean_lm_interval,
+        clean_lm_seq_len=args.clean_lm_seq_len,
+        clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
+        local_lm_weight=args.local_lm_weight,
         gradient_clip_norm=args.gradient_clip_norm,
         objective=args.objective,
     )
@@ -93,6 +97,10 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.05)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
     parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_interval", type=int, default=1)
+    parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
+    parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--gradient_clip_norm", type=float, default=1.0)
     parser.add_argument("--objective", choices=["paper_ar", "hidden"], default="paper_ar")
 

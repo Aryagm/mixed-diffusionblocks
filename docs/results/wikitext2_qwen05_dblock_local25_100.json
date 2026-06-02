@@ -1,0 +1,42 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "data": "corpora/wikitext2/train.txt",
+  "val_data": "corpora/wikitext2/validation.txt",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 128,
+  "eval_batches": 16,
+  "max_tokens": 200000,
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "objective": "paper_ar",
+      "clean_lm_weight": 0.0,
+      "local_lm_weight": 25.0,
+      "before": 372.1875,
+      "after": 224.3125,
+      "delta": 147.875,
+      "metrics_before": {
+        "loss": 372.1875,
+        "denoise_loss": 75.16015625,
+        "aux_lm_loss": 7.1472930908203125,
+        "clean_lm_loss": 0.0,
+        "local_lm_loss": 11.884765625
+      },
+      "metrics_after": {
+        "loss": 224.3125,
+        "denoise_loss": 41.01904296875,
+        "aux_lm_loss": 4.482547760009766,
+        "clean_lm_loss": 0.0,
+        "local_lm_loss": 7.328125
+      },
+      "diffusion_ce_before": 141.625,
+      "diffusion_ce_after": 112.65625,
+      "diffusion_ce_delta": 28.96875,
+      "next_token_ce_before": 2.484375,
+      "next_token_ce_after": 3.484375,
+      "next_token_ce_delta": -1.0,
+      "seconds": 6.679850042011822
+    }
+  }
+}

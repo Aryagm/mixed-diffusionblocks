@@ -126,6 +126,10 @@ def main(args):
             objective=args.objective,
             sigma_max=args.sigma_max,
             clean_lm_weight=args.clean_lm_weight,
+            clean_lm_interval=args.clean_lm_interval,
+            clean_lm_seq_len=args.clean_lm_seq_len,
+            clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
+            local_lm_weight=args.local_lm_weight,
         )
         trainer = DBlockTrainer(dblock, config)
         train_batches = batch_iterator(train_tokens, args.batch_size, args.seq_len)
@@ -138,6 +142,10 @@ def main(args):
         results["dblock"] = {
             "objective": args.objective,
             "clean_lm_weight": args.clean_lm_weight,
+            "clean_lm_interval": args.clean_lm_interval,
+            "clean_lm_seq_len": args.clean_lm_seq_len,
+            "clean_lm_full_warmup_steps": args.clean_lm_full_warmup_steps,
+            "local_lm_weight": args.local_lm_weight,
             "before": before,
             "after": after,
             "delta": before - after,
@@ -168,6 +176,10 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_interval", type=int, default=1)
+    parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
+    parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--layers", type=int, default=6)
     parser.add_argument("--hidden_size", type=int, default=128)

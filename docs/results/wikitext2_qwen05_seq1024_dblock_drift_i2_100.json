@@ -1,0 +1,105 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "data": "corpora/wikitext2/train.txt",
+  "val_data": "corpora/wikitext2/validation.txt",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 1024,
+  "eval_batches": 4,
+  "max_tokens": 400000,
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "objective": "paper_ar",
+      "frame_strategy": "drift",
+      "block_ranges": [
+        [
+          0,
+          5
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          8,
+          12
+        ],
+        [
+          12,
+          15
+        ],
+        [
+          15,
+          18
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          21,
+          23
+        ],
+        [
+          23,
+          24
+        ]
+      ],
+      "frame_scores": [
+        0.1005859375,
+        0.1025390625,
+        0.1083984375,
+        0.16796875,
+        0.16796875,
+        0.171875,
+        0.173828125,
+        0.17578125,
+        0.177734375,
+        0.1796875,
+        0.1796875,
+        0.1806640625,
+        0.181640625,
+        0.1826171875,
+        0.1845703125,
+        0.185546875,
+        0.1875,
+        0.189453125,
+        0.19140625,
+        0.208984375,
+        0.2138671875,
+        0.322265625,
+        0.322265625,
+        0.408203125
+      ],
+      "clean_lm_weight": 100.0,
+      "clean_lm_interval": 2,
+      "clean_lm_seq_len": 0,
+      "local_lm_weight": 0.0,
+      "before": 278.5,
+      "after": 217.75,
+      "delta": 60.75,
+      "metrics_before": {
+        "loss": 278.5,
+        "denoise_loss": 67.41845703125,
+        "aux_lm_loss": 2.6563720703125,
+        "clean_lm_loss": 2.109375,
+        "local_lm_loss": 0.0
+      },
+      "metrics_after": {
+        "loss": 217.75,
+        "denoise_loss": 19.5419921875,
+        "aux_lm_loss": 0.917877197265625,
+        "clean_lm_loss": 1.984375,
+        "local_lm_loss": 0.0
+      },
+      "diffusion_ce_before": 141.25,
+      "diffusion_ce_after": 107.875,
+      "diffusion_ce_delta": 33.375,
+      "next_token_ce_before": 2.109375,
+      "next_token_ce_after": 1.984375,
+      "next_token_ce_delta": 0.125,
+      "seconds": 58.7240864590276
+    }
+  }
+}
