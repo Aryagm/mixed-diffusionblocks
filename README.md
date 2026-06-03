@@ -1,7 +1,9 @@
 # Mixed DiffusionBlocks for Apple Silicon LLM Fine-Tuning
 
 Mixed DiffusionBlocks is an experimental MLX training path for fine-tuning
-large bf16 language-model blocks on Apple Silicon.
+large bf16 language-model blocks on Apple Silicon. The default LLM path now
+uses **Windowed Mixed DiffusionBlocks**: exact autoregressive CE on deterministic
+clean-token windows, while still training one full transformer block at a time.
 
 It extends SakanaAI's DiffusionBlocks idea with a practical LLM objective:
 
@@ -12,6 +14,8 @@ loss = diffusionblocks_denoising_loss + clean_lm_weight * next_token_ce
 Pure DiffusionBlocks gives the blockwise memory reduction, but in our LLM tests
 it often hurts ordinary next-token CE. Mixed DiffusionBlocks adds standard
 autoregressive CE while still training only the selected transformer block.
+Windowed Mixed keeps that CE anchor local in sequence length so it is much
+cheaper and close to pure DiffusionBlocks memory.
 
 This is not the official SakanaAI repository. It is an MLX/LLM adaptation and
 extension built on top of the public
@@ -54,11 +58,13 @@ Qwen2.5-1.5B, WikiText-2, seq1024, batch 1, 100 steps:
 | --- | ---: | ---: | ---: |
 | Full bf16 AR | 1.7344 | 1.5781 | 140.11 s |
 | Pure DiffusionBlocks | 1.7344 | 1.9609 | 103.56 s |
-| Mixed DiffusionBlocks | 1.7344 | 1.5859 | 197.90 s |
+| Mixed DiffusionBlocks, full clean anchor | 1.7344 | 1.5859 | 197.90 s |
+| Windowed Mixed, auto-window default | 1.7344 | 1.6016 | 115.97 s |
 
 Takeaway: pure DiffusionBlocks learns denoising but degrades ordinary LM CE.
 Mixed DiffusionBlocks fixes that failure mode and preserves normal forward-pass
-behavior.
+behavior. Windowed Mixed is the practical default when memory and wall-clock
+matter; full-sequence anchoring remains the quality ablation.
 
 ### Memory
 
@@ -70,6 +76,10 @@ Same M4 Max 36 GB machine:
 | Qwen2.5-1.5B seq128 | 12.75 GB | 4.11 GB | 4.05 GB |
 | Qwen2.5-3B seq128 | 24.59 GB | 8.47 GB | 8.47 GB |
 | Qwen2.5-7B seq2048 | killed before seq512 full run finished | 22.35 GB | 29.93 GB |
+
+With a 128-token windowed clean anchor at seq2048, Qwen2.5-7B used 22.31 GB
+peak and 6.61 s for the one-step memory test, effectively matching pure
+DiffusionBlocks memory while keeping an exact clean CE anchor.
 
 ## Installation
 
@@ -114,9 +124,14 @@ uv run --extra llm llm_dblock_train.py \
   --iters 100 \
   --batch_size 1 \
   --seq_len 1024 \
-  --num_blocks 8 \
-  --clean_lm_weight 100
+  --num_blocks 8
 ```
+
+By default, the LLM CLIs use `--clean_lm_anchor_profile auto_window` and
+`--clean_lm_weight 100`. The auto-window profile runs a deterministic
+128-token clean CE anchor every block update, with a 512-token anchor every 8
+updates. Use `--clean_lm_anchor_profile manual --clean_lm_weight 0` for a pure
+DiffusionBlocks ablation.
 
 ## Reproduce The WikiText-2 Runs
 
@@ -155,11 +170,12 @@ uv run --extra llm qwen_quality_benchmark.py \
   --batch_size 1 \
   --seq_len 1024 \
   --num_blocks 8 \
+  --clean_lm_anchor_profile manual \
   --clean_lm_weight 0 \
   --max_tokens 400000
 ```
 
-Mixed DiffusionBlocks:
+Default Windowed Mixed DiffusionBlocks:
 
 ```bash
 uv run --extra llm qwen_quality_benchmark.py \
@@ -172,6 +188,23 @@ uv run --extra llm qwen_quality_benchmark.py \
   --batch_size 1 \
   --seq_len 1024 \
   --num_blocks 8 \
+  --max_tokens 400000
+```
+
+Full-sequence Mixed DiffusionBlocks ablation:
+
+```bash
+uv run --extra llm qwen_quality_benchmark.py \
+  --mode dblock \
+  --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
+  --data corpora/wikitext2/train.txt \
+  --val_data corpora/wikitext2/validation.txt \
+  --steps 100 \
+  --eval_batches 4 \
+  --batch_size 1 \
+  --seq_len 1024 \
+  --num_blocks 8 \
+  --clean_lm_anchor_profile manual \
   --clean_lm_weight 100 \
   --max_tokens 400000
 ```
@@ -185,8 +218,7 @@ uv run --extra llm qwen_memory_benchmark.py \
   --batch_size 1 \
   --seq_len 2048 \
   --num_blocks 8 \
-  --objective paper_ar \
-  --clean_lm_weight 100
+  --objective paper_ar
 ```
 
 Quantized 4-bit Qwen weights are not suitable for this full-block trainer
@@ -212,6 +244,7 @@ This is a research prototype. The current evidence supports:
 
 - Mixed DiffusionBlocks fixes pure DiffusionBlocks' ordinary-LM CE degradation.
 - The fix works on real WikiText-2 held-out validation.
+- Windowed Mixed makes the quality-preserving anchor deterministic and cheap.
 - The memory advantage is large enough to train models/contexts full bf16 AR
   cannot fit on an M4 Max 36 GB Mac.
 
@@ -220,7 +253,8 @@ Still needed:
 - instruction-tuning datasets,
 - generation-quality evaluation,
 - LoRA/QLoRA baselines,
-- longer 3B/7B quality curves.
+- longer 3B/7B quality curves,
+- closing the remaining 1.5B seq1024 CE gap between auto-window and full AR.
 
 ## Attribution
 

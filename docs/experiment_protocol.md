@@ -40,7 +40,6 @@ uv run --extra llm qwen_quality_benchmark.py \
   --seq_len 128 \
   --batch_size 1 \
   --num_blocks 8 \
-  --clean_lm_weight 100 \
   --output_json docs/results/qwen05_dblock_cw100_100.json
 
 uv run --extra llm qwen_memory_benchmark.py \
@@ -49,17 +48,16 @@ uv run --extra llm qwen_memory_benchmark.py \
   --seq_len 2048 \
   --batch_size 1 \
   --num_blocks 8 \
-  --clean_lm_weight 100 \
-  --output_json docs/results/qwen25_7b_memory_cw100_seq2048.json
+  --output_json docs/results/qwen25_7b_memory_window_anchor128_seq2048.json
 ```
 
 ## Decision Rule
 
 - Pure `paper_ar` is a memory and denoising proof, not a standard LM
   fine-tuning claim.
-- Mixed `paper_ar` + clean LM CE is the current practical path if ordinary
-  next-token behavior matters.
+- Windowed Mixed `paper_ar` + clean LM CE is the current practical path if
+  ordinary next-token behavior matters. The public LLM CLIs default to
+  `clean_lm_anchor_profile=auto_window` and `clean_lm_weight=100`.
 - The current strong claim is quality-aware 7B bf16 block training at 2048
   tokens on M4 Max 36 GB, plus a small Qwen0.5B validation that ordinary CE can
   be improved rather than damaged.
-

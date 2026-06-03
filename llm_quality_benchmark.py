@@ -76,7 +76,12 @@ def eval_dblocks(trainer: DBlockTrainer, batches, num_batches: int) -> float:
     for i in range(num_batches):
         batch = next(batches)
         block_idx = i % trainer.config.num_blocks
-        loss, _ = trainer.loss(trainer.adapter.model, batch, block_idx=block_idx)
+        loss, _ = trainer.loss(
+            trainer.adapter.model,
+            batch,
+            block_idx=block_idx,
+            anchor_step=i + 1,
+        )
         mx.eval(loss)
         total += scalar(loss)
     return total / num_batches
@@ -126,8 +131,12 @@ def main(args):
             objective=args.objective,
             sigma_max=args.sigma_max,
             clean_lm_weight=args.clean_lm_weight,
+            clean_lm_anchor_profile=args.clean_lm_anchor_profile,
             clean_lm_interval=args.clean_lm_interval,
             clean_lm_seq_len=args.clean_lm_seq_len,
+            clean_lm_window_count=args.clean_lm_window_count,
+            clean_lm_large_seq_len=args.clean_lm_large_seq_len,
+            clean_lm_large_interval=args.clean_lm_large_interval,
             clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
             local_lm_weight=args.local_lm_weight,
         )
@@ -141,10 +150,14 @@ def main(args):
         after = eval_dblocks(trainer, val_batches, args.eval_batches)
         results["dblock"] = {
             "objective": args.objective,
-            "clean_lm_weight": args.clean_lm_weight,
-            "clean_lm_interval": args.clean_lm_interval,
-            "clean_lm_seq_len": args.clean_lm_seq_len,
-            "clean_lm_full_warmup_steps": args.clean_lm_full_warmup_steps,
+            "clean_lm_weight": trainer.config.clean_lm_weight,
+            "clean_lm_anchor_profile": trainer.config.clean_lm_anchor_profile,
+            "clean_lm_interval": trainer.config.clean_lm_interval,
+            "clean_lm_seq_len": trainer.config.clean_lm_seq_len,
+            "clean_lm_window_count": trainer.config.clean_lm_window_count,
+            "clean_lm_large_seq_len": trainer.config.clean_lm_large_seq_len,
+            "clean_lm_large_interval": trainer.config.clean_lm_large_interval,
+            "clean_lm_full_warmup_steps": trainer.config.clean_lm_full_warmup_steps,
             "local_lm_weight": args.local_lm_weight,
             "before": before,
             "after": after,
@@ -175,9 +188,17 @@ if __name__ == "__main__":
     parser.add_argument("--num_blocks", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--sigma_max", type=float, default=80.0)
-    parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_weight", type=float, default=100.0)
+    parser.add_argument(
+        "--clean_lm_anchor_profile",
+        choices=["manual", "auto_window"],
+        default="auto_window",
+    )
     parser.add_argument("--clean_lm_interval", type=int, default=1)
     parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_window_count", type=int, default=1)
+    parser.add_argument("--clean_lm_large_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_large_interval", type=int, default=0)
     parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
     parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)

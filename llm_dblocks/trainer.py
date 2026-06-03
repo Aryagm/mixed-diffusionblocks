@@ -17,6 +17,11 @@ from llm_dblocks.adapters import ModelAdapter
 
 
 _NORMAL = NormalDist()
+AUTO_WINDOW_CLEAN_LM_WEIGHT = 100.0
+AUTO_WINDOW_CLEAN_LM_SEQ_LEN = 128
+AUTO_WINDOW_CLEAN_LM_WINDOW_COUNT = 1
+AUTO_WINDOW_CLEAN_LM_LARGE_SEQ_LEN = 512
+AUTO_WINDOW_CLEAN_LM_LARGE_INTERVAL = 8
 
 
 def scalar(x) -> float:
@@ -35,8 +40,12 @@ class DBlockTrainingConfig:
     gamma: float = 0.05
     aux_lm_weight: float = 0.1
     clean_lm_weight: float = 0.0
+    clean_lm_anchor_profile: str = "manual"
     clean_lm_interval: int = 1
     clean_lm_seq_len: int = 0
+    clean_lm_window_count: int = 1
+    clean_lm_large_seq_len: int = 0
+    clean_lm_large_interval: int = 0
     clean_lm_full_warmup_steps: int = 0
     local_lm_weight: float = 0.0
     block_layer_boundaries: tuple[int, ...] | None = None
@@ -157,6 +166,7 @@ class DBlockTrainer:
     def __init__(self, adapter: ModelAdapter, config: DBlockTrainingConfig):
         self.adapter = adapter
         self.config = config
+        self.apply_anchor_profile()
         if config.block_layer_boundaries is None:
             self.ranges = block_ranges(adapter.num_layers, config.num_blocks)
         else:
@@ -172,6 +182,25 @@ class DBlockTrainer:
             for _ in range(config.num_blocks)
         ]
         mx.eval(self.adapter.model.parameters())
+
+    def apply_anchor_profile(self):
+        if self.config.clean_lm_anchor_profile == "manual":
+            return
+        if self.config.clean_lm_anchor_profile != "auto_window":
+            raise ValueError(
+                f"Unknown clean_lm_anchor_profile: {self.config.clean_lm_anchor_profile}"
+            )
+        if self.config.clean_lm_weight <= 0:
+            self.config.clean_lm_weight = AUTO_WINDOW_CLEAN_LM_WEIGHT
+        self.config.clean_lm_interval = 1
+        if self.config.clean_lm_seq_len <= 0:
+            self.config.clean_lm_seq_len = AUTO_WINDOW_CLEAN_LM_SEQ_LEN
+        if self.config.clean_lm_window_count <= 0:
+            self.config.clean_lm_window_count = AUTO_WINDOW_CLEAN_LM_WINDOW_COUNT
+        if self.config.clean_lm_large_seq_len <= 0:
+            self.config.clean_lm_large_seq_len = AUTO_WINDOW_CLEAN_LM_LARGE_SEQ_LEN
+        if self.config.clean_lm_large_interval <= 0:
+            self.config.clean_lm_large_interval = AUTO_WINDOW_CLEAN_LM_LARGE_INTERVAL
 
     def set_trainable_block(self, block_idx: int):
         start, end = self.ranges[block_idx]
@@ -217,15 +246,32 @@ class DBlockTrainer:
         batch: dict[str, mx.array],
         *,
         force_full: bool = False,
+        anchor_step: int | None = None,
+        block_idx: int = 0,
+        window_idx: int = 0,
     ) -> dict[str, mx.array]:
         if force_full:
             return batch
         anchor_len = int(self.config.clean_lm_seq_len or 0)
+        large_interval = int(self.config.clean_lm_large_interval or 0)
+        large_len = int(self.config.clean_lm_large_seq_len or 0)
+        if (
+            anchor_step is not None
+            and large_interval > 0
+            and large_len > 0
+            and anchor_step % large_interval == 0
+        ):
+            anchor_len = large_len
         seq_len = batch["input_ids"].shape[1]
         if anchor_len <= 0 or anchor_len >= seq_len:
             return batch
 
-        start = random.randint(0, seq_len - anchor_len)
+        if anchor_step is None:
+            start = random.randint(0, seq_len - anchor_len)
+        else:
+            span = seq_len - anchor_len + 1
+            offset = block_idx * max(anchor_len // 2, 1) + window_idx * anchor_len
+            start = ((anchor_step - 1) * anchor_len + offset) % span
         end = start + anchor_len
         return {
             "input_ids": batch["input_ids"][:, start:end],
@@ -238,14 +284,30 @@ class DBlockTrainer:
         batch: dict[str, mx.array],
         *,
         force_full: bool = False,
+        anchor_step: int | None = None,
+        block_idx: int = 0,
     ) -> mx.array:
-        batch = self.clean_anchor_batch(batch, force_full=force_full)
-        logits = model(batch["input_ids"])
-        return nn.losses.cross_entropy(
-            logits.reshape(-1, self.adapter.vocab_size),
-            batch["labels"].reshape(-1),
-            reduction="mean",
-        )
+        window_count = max(int(self.config.clean_lm_window_count), 1)
+        if force_full or self.config.clean_lm_seq_len <= 0:
+            window_count = 1
+
+        total = None
+        for window_idx in range(window_count):
+            anchor_batch = self.clean_anchor_batch(
+                batch,
+                force_full=force_full,
+                anchor_step=anchor_step,
+                block_idx=block_idx,
+                window_idx=window_idx,
+            )
+            logits = model(anchor_batch["input_ids"])
+            loss = nn.losses.cross_entropy(
+                logits.reshape(-1, self.adapter.vocab_size),
+                anchor_batch["labels"].reshape(-1),
+                reduction="mean",
+            )
+            total = loss if total is None else total + loss
+        return total / window_count
 
     def loss(
         self,
@@ -254,6 +316,7 @@ class DBlockTrainer:
         block_idx: int | None = None,
         use_clean_lm: bool | None = None,
         force_full_clean_lm: bool = False,
+        anchor_step: int | None = None,
     ):
         if self.config.objective == "hidden":
             return self.hidden_state_loss(
@@ -262,6 +325,7 @@ class DBlockTrainer:
                 block_idx=block_idx,
                 use_clean_lm=use_clean_lm,
                 force_full_clean_lm=force_full_clean_lm,
+                anchor_step=anchor_step,
             )
         if self.config.objective == "paper_ar":
             return self.paper_ar_loss(
@@ -270,6 +334,7 @@ class DBlockTrainer:
                 block_idx=block_idx,
                 use_clean_lm=use_clean_lm,
                 force_full_clean_lm=force_full_clean_lm,
+                anchor_step=anchor_step,
             )
         raise ValueError(f"Unknown objective: {self.config.objective}")
 
@@ -285,6 +350,7 @@ class DBlockTrainer:
         block_idx: int | None = None,
         use_clean_lm: bool | None = None,
         force_full_clean_lm: bool = False,
+        anchor_step: int | None = None,
     ):
         input_ids = batch["input_ids"]
         labels = batch["labels"]
@@ -317,6 +383,8 @@ class DBlockTrainer:
                 model,
                 batch,
                 force_full=force_full_clean_lm,
+                anchor_step=anchor_step,
+                block_idx=block_idx,
             )
         else:
             clean_lm_loss = mx.array(0.0, dtype=denoise_loss.dtype)
@@ -346,6 +414,7 @@ class DBlockTrainer:
         block_idx: int | None = None,
         use_clean_lm: bool | None = None,
         force_full_clean_lm: bool = False,
+        anchor_step: int | None = None,
     ):
         input_ids = batch["input_ids"]
         if block_idx is None:
@@ -380,6 +449,8 @@ class DBlockTrainer:
                 model,
                 batch,
                 force_full=force_full_clean_lm,
+                anchor_step=anchor_step,
+                block_idx=block_idx,
             )
         else:
             clean_lm_loss = mx.array(0.0, dtype=token_loss.dtype)
@@ -484,13 +555,21 @@ class DBlockTrainer:
 
         full_anchor_warmup_steps = max(int(self.config.clean_lm_full_warmup_steps), 0)
 
-        def loss_fn(model, batch, block_idx, use_clean_lm, force_full_clean_lm):
+        def loss_fn(
+            model,
+            batch,
+            block_idx,
+            use_clean_lm,
+            force_full_clean_lm,
+            anchor_step,
+        ):
             loss, _ = self.loss(
                 model,
                 batch,
                 block_idx=block_idx,
                 use_clean_lm=use_clean_lm,
                 force_full_clean_lm=force_full_clean_lm,
+                anchor_step=anchor_step,
             )
             return loss
 
@@ -519,6 +598,7 @@ class DBlockTrainer:
                 block_idx,
                 use_clean_lm,
                 force_full_clean_lm,
+                step,
             )
             if self.config.gradient_clip_norm > 0:
                 grads, _ = optim.clip_grad_norm(grads, self.config.gradient_clip_norm)
@@ -529,6 +609,7 @@ class DBlockTrainer:
                 block_idx=block_idx,
                 use_clean_lm=use_clean_lm,
                 force_full_clean_lm=force_full_clean_lm,
+                anchor_step=step,
             )[1]
             mx.eval(self.adapter.model.parameters(), optimizer.state, *metrics.values())
 

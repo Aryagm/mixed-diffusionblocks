@@ -106,7 +106,12 @@ def eval_dblock_metrics(
     for i in range(num_batches):
         batch = next(batches)
         block_idx = i % trainer.config.num_blocks
-        _, metrics = trainer.loss(trainer.adapter.model, batch, block_idx=block_idx)
+        _, metrics = trainer.loss(
+            trainer.adapter.model,
+            batch,
+            block_idx=block_idx,
+            anchor_step=i + 1,
+        )
         metric_values = {
             key: value
             for key, value in metrics.items()
@@ -220,8 +225,12 @@ def run_dblock(args):
         gamma=args.gamma,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
+        clean_lm_anchor_profile=args.clean_lm_anchor_profile,
         clean_lm_interval=args.clean_lm_interval,
         clean_lm_seq_len=args.clean_lm_seq_len,
+        clean_lm_window_count=args.clean_lm_window_count,
+        clean_lm_large_seq_len=args.clean_lm_large_seq_len,
+        clean_lm_large_interval=args.clean_lm_large_interval,
         clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
         local_lm_weight=args.local_lm_weight,
         block_layer_boundaries=frame_boundaries,
@@ -266,10 +275,14 @@ def run_dblock(args):
         "frame_strategy": args.frame_strategy,
         "block_ranges": trainer.ranges,
         "frame_scores": frame_scores,
-        "clean_lm_weight": args.clean_lm_weight,
-        "clean_lm_interval": args.clean_lm_interval,
-        "clean_lm_seq_len": args.clean_lm_seq_len,
-        "clean_lm_full_warmup_steps": args.clean_lm_full_warmup_steps,
+        "clean_lm_weight": trainer.config.clean_lm_weight,
+        "clean_lm_anchor_profile": trainer.config.clean_lm_anchor_profile,
+        "clean_lm_interval": trainer.config.clean_lm_interval,
+        "clean_lm_seq_len": trainer.config.clean_lm_seq_len,
+        "clean_lm_window_count": trainer.config.clean_lm_window_count,
+        "clean_lm_large_seq_len": trainer.config.clean_lm_large_seq_len,
+        "clean_lm_large_interval": trainer.config.clean_lm_large_interval,
+        "clean_lm_full_warmup_steps": trainer.config.clean_lm_full_warmup_steps,
         "local_lm_weight": args.local_lm_weight,
         "before": before,
         "after": after,
@@ -330,9 +343,13 @@ def main(args):
                 f"ntp_before={r['next_token_ce_before']:.4f} "
                 f"ntp_after={r['next_token_ce_after']:.4f} "
                 f"frame_strategy={r['frame_strategy']} "
+                f"clean_lm_anchor_profile={r['clean_lm_anchor_profile']} "
                 f"clean_lm_weight={r['clean_lm_weight']:.4f} "
                 f"clean_lm_interval={r['clean_lm_interval']} "
                 f"clean_lm_seq_len={r['clean_lm_seq_len']} "
+                f"clean_lm_window_count={r['clean_lm_window_count']} "
+                f"clean_lm_large_seq_len={r['clean_lm_large_seq_len']} "
+                f"clean_lm_large_interval={r['clean_lm_large_interval']} "
                 f"clean_lm_full_warmup_steps={r['clean_lm_full_warmup_steps']} "
                 f"local_lm_weight={r['local_lm_weight']:.4f} "
                 f"seconds={r['seconds']:.2f}"
@@ -369,9 +386,17 @@ if __name__ == "__main__":
     parser.add_argument("--sigma_min", type=float, default=0.002)
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
-    parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_weight", type=float, default=100.0)
+    parser.add_argument(
+        "--clean_lm_anchor_profile",
+        choices=["manual", "auto_window"],
+        default="auto_window",
+    )
     parser.add_argument("--clean_lm_interval", type=int, default=1)
     parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_window_count", type=int, default=1)
+    parser.add_argument("--clean_lm_large_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_large_interval", type=int, default=0)
     parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
     parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--frame_strategy", choices=["uniform", "drift"], default="uniform")

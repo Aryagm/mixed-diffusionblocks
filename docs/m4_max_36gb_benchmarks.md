@@ -10,9 +10,10 @@ Hardware:
 - 8 DiffusionBlocks
 - `paper_ar` objective: noisy token embeddings, clean/noisy sequence
   concatenation, causal-consistency mask, CE denoising loss
-- Mixed objective: `paper_ar` plus `--clean_lm_weight 100`, which adds standard
-  next-token CE through the ordinary model forward pass while only the selected
-  block is trainable
+- Mixed objective: `paper_ar` plus standard next-token CE through the ordinary
+  model forward pass while only the selected block is trainable. The default
+  LLM CLI profile is windowed: deterministic 128-token clean anchors, with a
+  512-token anchor every 8 updates.
 
 ## Qwen2.5-7B-Instruct-bf16
 
@@ -26,14 +27,15 @@ ordinary next-token CE.
 | 1024 | not rerun after 512 kill | pure `paper_ar` | 19.21 GB | 1.91 s | Pure denoising reference |
 | 2048 | not rerun after 512 kill | pure `paper_ar` | 22.35 GB | 4.06 s | Pure denoising reference |
 | 2048 | not rerun after 512 kill | mixed, `clean_lm_weight=100` | 29.93 GB | 40.21 s | Best current quality-aware headline |
+| 2048 | not rerun after 512 kill | windowed mixed, seq128 anchor | 22.31 GB | 6.61 s | Best current default-memory headline |
 | 4096 | not rerun after 512 kill | pure `paper_ar` | 38.96 GB | 13.71 s | Over physical memory; edge run |
 
 Suggested headline:
 
 > Qwen2.5-7B bf16 block training on an M4 Max 36 GB Mac. Full bf16 training is
-> killed even at 512 tokens; mixed DiffusionBlocks + next-token CE reaches
-> 2048 tokens at 29.93 GB peak while still training actual bf16 transformer
-> blocks.
+> killed even at 512 tokens; Windowed Mixed DiffusionBlocks + next-token CE
+> reaches 2048 tokens at 22.31 GB peak while still training actual bf16
+> transformer blocks.
 
 ## Qwen2.5-3B-Instruct-bf16
 

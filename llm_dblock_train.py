@@ -55,8 +55,12 @@ def main(args):
         gamma=args.gamma,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
+        clean_lm_anchor_profile=args.clean_lm_anchor_profile,
         clean_lm_interval=args.clean_lm_interval,
         clean_lm_seq_len=args.clean_lm_seq_len,
+        clean_lm_window_count=args.clean_lm_window_count,
+        clean_lm_large_seq_len=args.clean_lm_large_seq_len,
+        clean_lm_large_interval=args.clean_lm_large_interval,
         clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
         local_lm_weight=args.local_lm_weight,
         gradient_clip_norm=args.gradient_clip_norm,
@@ -65,7 +69,12 @@ def main(args):
     trainer = DBlockTrainer(adapter, config)
     print(
         f"backend={args.backend} layers={adapter.num_layers} blocks={trainer.ranges} "
-        f"tokens={len(tokens)} batch={args.batch_size} seq_len={args.seq_len}"
+        f"tokens={len(tokens)} batch={args.batch_size} seq_len={args.seq_len} "
+        f"clean_lm_anchor_profile={trainer.config.clean_lm_anchor_profile} "
+        f"clean_lm_weight={trainer.config.clean_lm_weight} "
+        f"clean_lm_seq_len={trainer.config.clean_lm_seq_len} "
+        f"clean_lm_large_seq_len={trainer.config.clean_lm_large_seq_len} "
+        f"clean_lm_large_interval={trainer.config.clean_lm_large_interval}"
     )
     trainer.train(batches, iters=args.iters, log_every=args.log_every)
     if args.output_dir:
@@ -96,9 +105,17 @@ if __name__ == "__main__":
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--gamma", type=float, default=0.05)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
-    parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_weight", type=float, default=100.0)
+    parser.add_argument(
+        "--clean_lm_anchor_profile",
+        choices=["manual", "auto_window"],
+        default="auto_window",
+    )
     parser.add_argument("--clean_lm_interval", type=int, default=1)
     parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_window_count", type=int, default=1)
+    parser.add_argument("--clean_lm_large_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_large_interval", type=int, default=0)
     parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
     parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--gradient_clip_norm", type=float, default=1.0)

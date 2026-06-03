@@ -16,6 +16,20 @@ from llm_dblocks.data import batch_iterator, load_text, tokenize_text
 from llm_dblocks.trainer import DBlockTrainer, DBlockTrainingConfig
 
 
+def clean_anchor_config(config: DBlockTrainingConfig) -> dict[str, float | int | str]:
+    return {
+        "clean_lm_weight": config.clean_lm_weight,
+        "clean_lm_anchor_profile": config.clean_lm_anchor_profile,
+        "clean_lm_interval": config.clean_lm_interval,
+        "clean_lm_seq_len": config.clean_lm_seq_len,
+        "clean_lm_window_count": config.clean_lm_window_count,
+        "clean_lm_large_seq_len": config.clean_lm_large_seq_len,
+        "clean_lm_large_interval": config.clean_lm_large_interval,
+        "clean_lm_full_warmup_steps": config.clean_lm_full_warmup_steps,
+        "local_lm_weight": config.local_lm_weight,
+    }
+
+
 def gb(nbytes: int | float) -> float:
     return float(nbytes) / (1024**3)
 
@@ -81,8 +95,12 @@ def dblock_step(adapter, batch, args):
         gamma=args.gamma,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
+        clean_lm_anchor_profile=args.clean_lm_anchor_profile,
         clean_lm_interval=args.clean_lm_interval,
         clean_lm_seq_len=args.clean_lm_seq_len,
+        clean_lm_window_count=args.clean_lm_window_count,
+        clean_lm_large_seq_len=args.clean_lm_large_seq_len,
+        clean_lm_large_interval=args.clean_lm_large_interval,
         clean_lm_full_warmup_steps=args.clean_lm_full_warmup_steps,
         local_lm_weight=args.local_lm_weight,
         gradient_clip_norm=args.gradient_clip_norm,
@@ -95,7 +113,12 @@ def dblock_step(adapter, batch, args):
     trainer.set_trainable_block(block_idx)
 
     def loss_fn(model, batch):
-        loss, _ = trainer.loss(model, batch, block_idx=block_idx)
+        loss, _ = trainer.loss(
+            model,
+            batch,
+            block_idx=block_idx,
+            anchor_step=1,
+        )
         return loss
 
     loss_and_grad = nn.value_and_grad(adapter.model, loss_fn)
@@ -107,7 +130,13 @@ def dblock_step(adapter, batch, args):
     optimizer.update(adapter.model, grads)
     mx.eval(adapter.model.parameters(), optimizer.state, loss)
     elapsed = time.perf_counter() - start
-    return scalar(loss), elapsed, memory_snapshot(), trainer.ranges[block_idx]
+    return (
+        scalar(loss),
+        elapsed,
+        memory_snapshot(),
+        trainer.ranges[block_idx],
+        clean_anchor_config(trainer.config),
+    )
 
 
 def load_adapter_and_batch(args):
@@ -141,8 +170,12 @@ def main(args):
         "num_blocks": args.num_blocks,
         "objective": args.objective,
         "clean_lm_weight": args.clean_lm_weight,
+        "clean_lm_anchor_profile": args.clean_lm_anchor_profile,
         "clean_lm_interval": args.clean_lm_interval,
         "clean_lm_seq_len": args.clean_lm_seq_len,
+        "clean_lm_window_count": args.clean_lm_window_count,
+        "clean_lm_large_seq_len": args.clean_lm_large_seq_len,
+        "clean_lm_large_interval": args.clean_lm_large_interval,
         "clean_lm_full_warmup_steps": args.clean_lm_full_warmup_steps,
         "local_lm_weight": args.local_lm_weight,
         "modes": {},
@@ -179,12 +212,15 @@ def main(args):
     if args.mode in {"dblock", "both"}:
         try:
             adapter, batch = load_adapter_and_batch(args)
-            loss, elapsed, memory, block_range = dblock_step(adapter, batch, args)
+            loss, elapsed, memory, block_range, anchor_config = dblock_step(
+                adapter, batch, args
+            )
             results["modes"]["dblock"] = {
                 "ok": True,
                 "loss": loss,
                 "seconds": elapsed,
                 "block_range": block_range,
+                **anchor_config,
                 **memory,
             }
             print(
@@ -223,9 +259,17 @@ if __name__ == "__main__":
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--gamma", type=float, default=0.05)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
-    parser.add_argument("--clean_lm_weight", type=float, default=0.0)
+    parser.add_argument("--clean_lm_weight", type=float, default=100.0)
+    parser.add_argument(
+        "--clean_lm_anchor_profile",
+        choices=["manual", "auto_window"],
+        default="auto_window",
+    )
     parser.add_argument("--clean_lm_interval", type=int, default=1)
     parser.add_argument("--clean_lm_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_window_count", type=int, default=1)
+    parser.add_argument("--clean_lm_large_seq_len", type=int, default=0)
+    parser.add_argument("--clean_lm_large_interval", type=int, default=0)
     parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
     parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--gradient_clip_norm", type=float, default=1.0)

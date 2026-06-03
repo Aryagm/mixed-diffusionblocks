@@ -109,6 +109,74 @@ def test_clean_anchor_batch_can_use_short_random_window():
     assert cropped["labels"].shape == (1, 3)
 
 
+def test_clean_anchor_batch_uses_deterministic_window_from_step():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(num_blocks=2, clean_lm_seq_len=3),
+    )
+
+    first = trainer.clean_anchor_batch(long_tiny_batch(), anchor_step=1, block_idx=0)
+    second = trainer.clean_anchor_batch(long_tiny_batch(), anchor_step=2, block_idx=0)
+
+    assert first["input_ids"].tolist() == [[1, 2, 3]]
+    assert second["input_ids"].tolist() == [[4, 5, 6]]
+
+
+def test_clean_anchor_batch_offsets_multiple_windows():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(num_blocks=2, clean_lm_seq_len=2),
+    )
+
+    first = trainer.clean_anchor_batch(
+        long_tiny_batch(),
+        anchor_step=1,
+        block_idx=0,
+        window_idx=0,
+    )
+    second = trainer.clean_anchor_batch(
+        long_tiny_batch(),
+        anchor_step=1,
+        block_idx=0,
+        window_idx=1,
+    )
+
+    assert first["input_ids"].tolist() == [[1, 2]]
+    assert second["input_ids"].tolist() == [[3, 4]]
+
+
+def test_clean_anchor_batch_uses_periodic_large_window():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(
+            num_blocks=2,
+            clean_lm_seq_len=2,
+            clean_lm_large_seq_len=4,
+            clean_lm_large_interval=2,
+        ),
+    )
+
+    small = trainer.clean_anchor_batch(long_tiny_batch(), anchor_step=1, block_idx=0)
+    large = trainer.clean_anchor_batch(long_tiny_batch(), anchor_step=2, block_idx=0)
+
+    assert small["input_ids"].shape == (1, 2)
+    assert large["input_ids"].shape == (1, 4)
+
+
+def test_auto_window_profile_sets_default_anchor_policy():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(num_blocks=2, clean_lm_anchor_profile="auto_window"),
+    )
+
+    assert trainer.config.clean_lm_weight == 100.0
+    assert trainer.config.clean_lm_interval == 1
+    assert trainer.config.clean_lm_seq_len == 128
+    assert trainer.config.clean_lm_window_count == 1
+    assert trainer.config.clean_lm_large_seq_len == 512
+    assert trainer.config.clean_lm_large_interval == 8
+
+
 def test_clean_anchor_batch_can_force_full_sequence_for_warmup():
     trainer = DBlockTrainer(
         tiny_adapter(),

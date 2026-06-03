@@ -2,7 +2,7 @@
 
 This pass tested two extensions on top of Budgeted Mixed DiffusionBlocks:
 
-1. **Windowed exact anchors:** run exact clean CE on a random clean-token window
+1. **Windowed exact anchors:** run exact clean CE on a clean-token window
    instead of the full sequence.
 2. **Adaptive frames:** calibrate layer-wise activation drift, then form
    contiguous drift-balanced frames instead of equal layer-count blocks.
@@ -15,8 +15,15 @@ from exact anchoring.
 
 New trainer knobs:
 
+- `clean_lm_anchor_profile=auto_window`: default LLM fine-tuning profile. It
+  sets `clean_lm_weight=100`, runs exact clean CE every block update on a
+  deterministic 128-token window, and uses a 512-token window every 8 updates.
 - `clean_lm_seq_len`: if positive, exact clean CE uses a random subsequence of
-  this length.
+  this length when no deterministic `anchor_step` is supplied.
+- `clean_lm_window_count`: average multiple deterministic clean-token windows
+  on the same update.
+- `clean_lm_large_seq_len` / `clean_lm_large_interval`: periodically replace
+  the short anchor with a larger exact anchor.
 - `clean_lm_full_warmup_steps`: use full-sequence clean CE every step during an
   initial warmup, then fall back to the configured windowed anchor.
 - `block_layer_boundaries`: optional explicit contiguous layer boundaries.
@@ -89,19 +96,26 @@ and sampling probabilities.
 
 ## Qwen2.5-1.5B WikiText-2 Seq1024
 
-| Method | Anchor window | Steps | Validation CE before | Validation CE after | Time |
-| --- | ---: | ---: | ---: | ---: | ---: |
+| Method | Anchor policy | Steps | Validation CE before | Validation CE after | Time |
+| --- | --- | ---: | ---: | ---: | ---: |
 | Full bf16 AR | n/a | 100 | 1.7344 | 1.5781 | 140.11 s |
-| Pure DiffusionBlocks | n/a | 100 | 1.7344 | 1.9609 | 103.56 s |
-| Mixed DiffusionBlocks | full | 100 | 1.7344 | 1.5859 | 197.90 s |
-| Windowed Mixed | 128 | 100 | 1.7344 | 1.6094 | 109.89 s |
-| Windowed Mixed | 256 | 100 | 1.7344 | 1.6250 | 121.99 s |
-| Windowed Mixed | 128 | 150 | 1.7344 | 1.6094 | 167.86 s |
+| Pure DiffusionBlocks | none | 100 | 1.7344 | 1.9609 | 103.56 s |
+| Mixed DiffusionBlocks | full sequence | 100 | 1.7344 | 1.5859 | 197.90 s |
+| Windowed Mixed | 128 every update | 100 | 1.7344 | 1.6094 | 109.89 s |
+| Windowed Mixed | 256 every update | 100 | 1.7344 | 1.6250 | 121.99 s |
+| Windowed Mixed | 128 every update | 150 | 1.7344 | 1.6094 | 167.86 s |
+| Auto-window default | 128 every update, 512 every 8 | 100 | 1.7344 | 1.6016 | 115.97 s |
+| Multiscale manual | 128 every update, 512 every 4 | 100 | 1.7344 | 1.6016 | 119.11 s |
+| Multi-window manual | two 128-token windows | 100 | 1.7344 | 1.6094 | 127.80 s |
+| Windowed Mixed | 64 every update | 100 | 1.7344 | 1.6328 | 110.80 s |
 
-On 1.5B, 128-token Windowed Mixed is much faster than full AR and exact mixed,
-but it does not yet match their final CE. Running longer to 150 steps did not
-improve this setting, so the next improvement needs better frame/risk selection
-or a different anchor schedule rather than more steps alone.
+On 1.5B, auto-window improves the 128-token Windowed Mixed CE from 1.6094 to
+1.6016 while staying faster than full AR and much faster than full-sequence
+mixed anchoring. It still does not match full AR's 1.5781 at this 100-step smoke
+horizon. Running longer to 150 steps, using two 128-token windows, shrinking to
+64 tokens, or increasing the large-window cadence did not close the gap. The
+default is therefore a practical memory/speed profile, not a solved quality
+dominance claim.
 
 ## Qwen2.5-7B Seq2048 Memory
 
@@ -109,7 +123,7 @@ or a different anchor schedule rather than more steps alone.
 | --- | --- | ---: | ---: |
 | Pure DiffusionBlocks | none | 22.35 GB | 4.06 s |
 | Mixed DiffusionBlocks | full seq2048 | 29.93 GB | 40.21 s |
-| Windowed Mixed | random seq128 | 22.31 GB | 6.61 s |
+| Windowed Mixed | seq128 | 22.31 GB | 6.61 s |
 
 The 7B memory result is the strongest practical finding from this pass:
 windowed exact anchoring keeps the quality-preserving AR anchor but removes the
@@ -128,4 +142,7 @@ sample frames in proportion to risk and recent clean-CE drift
 ```
 
 The quick result here is that windowed exact anchors are useful and highly
-memory-efficient, but adaptive boundaries alone are not enough.
+memory-efficient, but adaptive boundaries alone are not enough. The publishable
+default candidate from this pass is the deterministic auto-window profile:
+one exposed switch, reproducible anchor placement, and near-pure DiffusionBlocks
+memory on the 7B boundary test.
