@@ -207,6 +207,9 @@ def run(args) -> dict:
         "prefill_step_size": args.prefill_step_size,
         "repeats": args.repeats,
         "warmup": args.warmup,
+        "skip_builtin_spec": args.skip_builtin_spec,
+        "skip_draft_only": args.skip_draft_only,
+        "skip_prefix_reuse": args.skip_prefix_reuse,
         "exit_layers": exit_layers,
         "draft_tokens": draft_token_counts,
         "full": {},
@@ -228,66 +231,74 @@ def run(args) -> dict:
 
     for exit_layer in exit_layers:
         draft_model = EarlyExitDraftModel(adapter, exit_layer=exit_layer)
-        draft = best_run(
-            lambda draft_model=draft_model: draft_generator(draft_model, prompt, args),
-            repeats=args.repeats,
-            warmup=args.warmup,
-        )
-        draft_row = {
-            "exit_layer": exit_layer,
-            "layer_fraction": exit_layer / adapter.num_layers,
-            **draft.to_json(),
-            "speedup_vs_full": draft.tokens_per_second / full.tokens_per_second,
-        }
-        results["draft_only"].append(draft_row)
-        print(
-            f"draft exit={exit_layer}/{adapter.num_layers} "
-            f"tps={draft.tokens_per_second:.2f} "
-            f"speedup={draft_row['speedup_vs_full']:.2f}x"
-        )
+        if not args.skip_draft_only:
+            draft = best_run(
+                lambda draft_model=draft_model: draft_generator(
+                    draft_model, prompt, args
+                ),
+                repeats=args.repeats,
+                warmup=args.warmup,
+            )
+            draft_row = {
+                "exit_layer": exit_layer,
+                "layer_fraction": exit_layer / adapter.num_layers,
+                **draft.to_json(),
+                "speedup_vs_full": draft.tokens_per_second / full.tokens_per_second,
+            }
+            results["draft_only"].append(draft_row)
+            print(
+                f"draft exit={exit_layer}/{adapter.num_layers} "
+                f"tps={draft.tokens_per_second:.2f} "
+                f"speedup={draft_row['speedup_vs_full']:.2f}x"
+            )
 
         for num_draft_tokens in draft_token_counts:
-            try:
-                spec = best_run(
-                    lambda draft_model=draft_model, num_draft_tokens=num_draft_tokens: speculative_generator(
-                        adapter,
-                        draft_model,
-                        prompt,
-                        num_draft_tokens,
-                        args,
-                    ),
-                    repeats=args.repeats,
-                    warmup=args.warmup,
-                )
-                row = {
-                    "exit_layer": exit_layer,
-                    "layer_fraction": exit_layer / adapter.num_layers,
-                    "num_draft_tokens": num_draft_tokens,
-                    **spec.to_json(),
-                    "speedup_vs_full": spec.tokens_per_second / full.tokens_per_second,
-                }
-            except Exception as exc:
-                row = {
-                    "exit_layer": exit_layer,
-                    "layer_fraction": exit_layer / adapter.num_layers,
-                    "num_draft_tokens": num_draft_tokens,
-                    "ok": False,
-                    "error": repr(exc),
-                }
-            results["speculative"].append(row)
-            if row.get("ok") is False:
-                print(
-                    f"spec exit={exit_layer}/{adapter.num_layers} "
-                    f"draft={num_draft_tokens} failed error={row['error']}"
-                )
-            else:
-                print(
-                    f"spec exit={exit_layer}/{adapter.num_layers} "
-                    f"draft={num_draft_tokens} tps={row['tokens_per_second']:.2f} "
-                    f"speedup={row['speedup_vs_full']:.2f}x "
-                    f"accepted={row['draft_fraction']:.2%}"
-                )
+            if not args.skip_builtin_spec:
+                try:
+                    spec = best_run(
+                        lambda draft_model=draft_model, num_draft_tokens=num_draft_tokens: speculative_generator(
+                            adapter,
+                            draft_model,
+                            prompt,
+                            num_draft_tokens,
+                            args,
+                        ),
+                        repeats=args.repeats,
+                        warmup=args.warmup,
+                    )
+                    row = {
+                        "exit_layer": exit_layer,
+                        "layer_fraction": exit_layer / adapter.num_layers,
+                        "num_draft_tokens": num_draft_tokens,
+                        **spec.to_json(),
+                        "speedup_vs_full": spec.tokens_per_second
+                        / full.tokens_per_second,
+                    }
+                except Exception as exc:
+                    row = {
+                        "exit_layer": exit_layer,
+                        "layer_fraction": exit_layer / adapter.num_layers,
+                        "num_draft_tokens": num_draft_tokens,
+                        "ok": False,
+                        "error": repr(exc),
+                    }
+                results["speculative"].append(row)
+                if row.get("ok") is False:
+                    print(
+                        f"spec exit={exit_layer}/{adapter.num_layers} "
+                        f"draft={num_draft_tokens} failed error={row['error']}"
+                    )
+                else:
+                    print(
+                        f"spec exit={exit_layer}/{adapter.num_layers} "
+                        f"draft={num_draft_tokens} "
+                        f"tps={row['tokens_per_second']:.2f} "
+                        f"speedup={row['speedup_vs_full']:.2f}x "
+                        f"accepted={row['draft_fraction']:.2%}"
+                    )
 
+            if args.skip_prefix_reuse:
+                continue
             try:
                 reuse = best_run(
                     lambda exit_layer=exit_layer, num_draft_tokens=num_draft_tokens: prefix_reuse_generator(
@@ -371,6 +382,9 @@ if __name__ == "__main__":
     parser.add_argument("--draft_tokens", default="2,4,6,8")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
+    parser.add_argument("--skip_builtin_spec", action="store_true")
+    parser.add_argument("--skip_draft_only", action="store_true")
+    parser.add_argument("--skip_prefix_reuse", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_json", default=None)
     main(parser.parse_args())
