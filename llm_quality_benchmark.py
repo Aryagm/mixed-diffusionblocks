@@ -130,6 +130,7 @@ def main(args):
             weight_decay=0.01,
             objective=args.objective,
             sigma_max=args.sigma_max,
+            denoise_weight=args.denoise_weight,
             clean_lm_weight=args.clean_lm_weight,
             clean_lm_anchor_profile=args.clean_lm_anchor_profile,
             clean_lm_interval=args.clean_lm_interval,
@@ -150,6 +151,7 @@ def main(args):
         after = eval_dblocks(trainer, val_batches, args.eval_batches)
         results["dblock"] = {
             "objective": args.objective,
+            "denoise_weight": trainer.config.denoise_weight,
             "clean_lm_weight": trainer.config.clean_lm_weight,
             "clean_lm_anchor_profile": trainer.config.clean_lm_anchor_profile,
             "clean_lm_interval": trainer.config.clean_lm_interval,
@@ -188,6 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num_blocks", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--sigma_max", type=float, default=80.0)
+    parser.add_argument("--denoise_weight", type=float, default=1.0)
     parser.add_argument("--clean_lm_weight", type=float, default=100.0)
     parser.add_argument(
         "--clean_lm_anchor_profile",

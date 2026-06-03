@@ -1,4 +1,5 @@
 import mlx.core as mx
+import pytest
 
 from llm_dblocks.adapters import TinyLMAdapter
 from llm_dblocks.tiny_lm import TinyLMConfig
@@ -95,6 +96,23 @@ def test_exact_clean_anchor_can_be_skipped_for_budgeted_updates():
     mx.eval(loss, metrics["clean_lm_loss"])
 
     assert scalar(metrics["clean_lm_loss"]) == 0.0
+
+
+def test_denoise_weight_scales_paper_ar_loss():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(
+            num_blocks=2,
+            clean_lm_weight=0.0,
+            local_lm_weight=0.0,
+            denoise_weight=0.0,
+        ),
+    )
+
+    loss, _ = trainer.loss(trainer.adapter.model, tiny_batch(), block_idx=0)
+    mx.eval(loss)
+
+    assert scalar(loss) == pytest.approx(0.0)
 
 
 def test_clean_anchor_batch_can_use_short_random_window():

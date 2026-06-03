@@ -53,6 +53,7 @@ def main(args):
         sigma_min=args.sigma_min,
         sigma_max=args.sigma_max,
         gamma=args.gamma,
+        denoise_weight=args.denoise_weight,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
         clean_lm_anchor_profile=args.clean_lm_anchor_profile,
@@ -72,6 +73,7 @@ def main(args):
         f"tokens={len(tokens)} batch={args.batch_size} seq_len={args.seq_len} "
         f"clean_lm_anchor_profile={trainer.config.clean_lm_anchor_profile} "
         f"clean_lm_weight={trainer.config.clean_lm_weight} "
+        f"denoise_weight={trainer.config.denoise_weight} "
         f"clean_lm_seq_len={trainer.config.clean_lm_seq_len} "
         f"clean_lm_large_seq_len={trainer.config.clean_lm_large_seq_len} "
         f"clean_lm_large_interval={trainer.config.clean_lm_large_interval}"
@@ -104,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sigma_min", type=float, default=0.002)
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--gamma", type=float, default=0.05)
+    parser.add_argument("--denoise_weight", type=float, default=1.0)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
     parser.add_argument("--clean_lm_weight", type=float, default=100.0)
     parser.add_argument(

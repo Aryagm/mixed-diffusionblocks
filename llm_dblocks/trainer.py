@@ -38,6 +38,7 @@ class DBlockTrainingConfig:
     p_mean: float = -1.2
     p_std: float = 1.2
     gamma: float = 0.05
+    denoise_weight: float = 1.0
     aux_lm_weight: float = 0.1
     clean_lm_weight: float = 0.0
     clean_lm_anchor_profile: str = "manual"
@@ -393,7 +394,7 @@ class DBlockTrainer:
         else:
             local_lm_loss = mx.array(0.0, dtype=denoise_loss.dtype)
         loss = (
-            denoise_loss
+            self.config.denoise_weight * denoise_loss
             + self.config.aux_lm_weight * aux_lm_loss
             + self.config.clean_lm_weight * clean_lm_loss
             + self.config.local_lm_weight * local_lm_loss
@@ -464,7 +465,7 @@ class DBlockTrainer:
         else:
             local_lm_loss = mx.array(0.0, dtype=token_loss.dtype)
         loss = (
-            token_loss
+            self.config.denoise_weight * token_loss
             + self.config.clean_lm_weight * clean_lm_loss
             + self.config.local_lm_weight * local_lm_loss
         )

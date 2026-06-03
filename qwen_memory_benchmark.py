@@ -19,6 +19,7 @@ from llm_dblocks.trainer import DBlockTrainer, DBlockTrainingConfig
 def clean_anchor_config(config: DBlockTrainingConfig) -> dict[str, float | int | str]:
     return {
         "clean_lm_weight": config.clean_lm_weight,
+        "denoise_weight": config.denoise_weight,
         "clean_lm_anchor_profile": config.clean_lm_anchor_profile,
         "clean_lm_interval": config.clean_lm_interval,
         "clean_lm_seq_len": config.clean_lm_seq_len,
@@ -93,6 +94,7 @@ def dblock_step(adapter, batch, args):
         sigma_min=args.sigma_min,
         sigma_max=args.sigma_max,
         gamma=args.gamma,
+        denoise_weight=args.denoise_weight,
         aux_lm_weight=args.aux_lm_weight,
         clean_lm_weight=args.clean_lm_weight,
         clean_lm_anchor_profile=args.clean_lm_anchor_profile,
@@ -169,6 +171,7 @@ def main(args):
         "seq_len": args.seq_len,
         "num_blocks": args.num_blocks,
         "objective": args.objective,
+        "denoise_weight": args.denoise_weight,
         "clean_lm_weight": args.clean_lm_weight,
         "clean_lm_anchor_profile": args.clean_lm_anchor_profile,
         "clean_lm_interval": args.clean_lm_interval,
@@ -258,6 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sigma_min", type=float, default=0.002)
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--gamma", type=float, default=0.05)
+    parser.add_argument("--denoise_weight", type=float, default=1.0)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
     parser.add_argument("--clean_lm_weight", type=float, default=100.0)
     parser.add_argument(
