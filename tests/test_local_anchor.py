@@ -115,6 +115,34 @@ def test_denoise_weight_scales_paper_ar_loss():
     assert scalar(loss) == pytest.approx(0.0)
 
 
+def test_zero_denoise_weight_uses_clean_anchor_fast_path():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(
+            num_blocks=2,
+            clean_lm_weight=10.0,
+            local_lm_weight=0.0,
+            denoise_weight=0.0,
+        ),
+    )
+
+    def clean_loss(model, batch, **kwargs):
+        return mx.array(2.0)
+
+    def fail_embed(input_ids):
+        raise AssertionError("zero denoise path should not compute denoising")
+
+    trainer.clean_next_token_loss = clean_loss
+    trainer.adapter.embed = fail_embed
+
+    loss, metrics = trainer.loss(trainer.adapter.model, tiny_batch(), block_idx=0)
+    mx.eval(loss, metrics["denoise_loss"], metrics["clean_lm_loss"])
+
+    assert scalar(loss) == pytest.approx(20.0)
+    assert scalar(metrics["denoise_loss"]) == pytest.approx(0.0)
+    assert scalar(metrics["clean_lm_loss"]) == pytest.approx(2.0)
+
+
 def test_clean_anchor_batch_can_use_short_random_window():
     trainer = DBlockTrainer(
         tiny_adapter(),

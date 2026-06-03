@@ -422,6 +422,29 @@ class DBlockTrainer:
             block_idx = random.randrange(self.config.num_blocks)
         start, end = self.ranges[block_idx]
 
+        if self.config.denoise_weight <= 0 and self.config.local_lm_weight <= 0:
+            if self.should_use_clean_lm(use_clean_lm):
+                clean_lm_loss = self.clean_next_token_loss(
+                    model,
+                    batch,
+                    force_full=force_full_clean_lm,
+                    anchor_step=anchor_step,
+                    block_idx=block_idx,
+                )
+            else:
+                clean_lm_loss = mx.array(0.0)
+            token_loss = mx.array(0.0, dtype=clean_lm_loss.dtype)
+            local_lm_loss = mx.array(0.0, dtype=clean_lm_loss.dtype)
+            loss = self.config.clean_lm_weight * clean_lm_loss
+            return loss, {
+                "loss": loss,
+                "denoise_loss": token_loss,
+                "aux_lm_loss": token_loss,
+                "clean_lm_loss": clean_lm_loss,
+                "local_lm_loss": local_lm_loss,
+                "block": mx.array(block_idx),
+            }
+
         clean = self.normalize_embeddings(self.adapter.embed(input_ids))
         sigmas = self._sample_sigmas(clean.shape[0], block_idx).astype(clean.dtype)
         noisy = clean + sigmas * mx.random.normal(clean.shape, dtype=clean.dtype)
