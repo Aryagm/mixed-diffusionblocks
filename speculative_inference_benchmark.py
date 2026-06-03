@@ -14,7 +14,10 @@ import numpy as np
 
 from llm_dblocks.adapters import load_mlx_lm_adapter
 from llm_dblocks.data import load_text, tokenize_text
-from llm_dblocks.speculative import EarlyExitDraftModel
+from llm_dblocks.speculative import (
+    EarlyExitDraftModel,
+    prefix_reuse_speculative_generate_step,
+)
 
 
 mlx_generate = importlib.import_module("mlx_lm.generate")
@@ -168,6 +171,17 @@ def speculative_generator(adapter, draft_model, prompt: mx.array, draft_tokens: 
     )
 
 
+def prefix_reuse_generator(adapter, prompt: mx.array, exit_layer: int, draft_tokens: int, args):
+    return prefix_reuse_speculative_generate_step(
+        prompt,
+        adapter,
+        exit_layer=exit_layer,
+        num_draft_tokens=draft_tokens,
+        max_tokens=args.max_new_tokens,
+        prefill_step_size=args.prefill_step_size,
+    )
+
+
 def run(args) -> dict:
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -198,6 +212,7 @@ def run(args) -> dict:
         "full": {},
         "draft_only": [],
         "speculative": [],
+        "prefix_reuse_speculative": [],
     }
 
     full = best_run(
@@ -273,10 +288,61 @@ def run(args) -> dict:
                     f"accepted={row['draft_fraction']:.2%}"
                 )
 
+            try:
+                reuse = best_run(
+                    lambda exit_layer=exit_layer, num_draft_tokens=num_draft_tokens: prefix_reuse_generator(
+                        adapter,
+                        prompt,
+                        exit_layer,
+                        num_draft_tokens,
+                        args,
+                    ),
+                    repeats=args.repeats,
+                    warmup=args.warmup,
+                )
+                reuse_row = {
+                    "exit_layer": exit_layer,
+                    "layer_fraction": exit_layer / adapter.num_layers,
+                    "num_draft_tokens": num_draft_tokens,
+                    **reuse.to_json(),
+                    "speedup_vs_full": reuse.tokens_per_second
+                    / full.tokens_per_second,
+                }
+            except Exception as exc:
+                reuse_row = {
+                    "exit_layer": exit_layer,
+                    "layer_fraction": exit_layer / adapter.num_layers,
+                    "num_draft_tokens": num_draft_tokens,
+                    "ok": False,
+                    "error": repr(exc),
+                }
+            results["prefix_reuse_speculative"].append(reuse_row)
+            if reuse_row.get("ok") is False:
+                print(
+                    f"reuse exit={exit_layer}/{adapter.num_layers} "
+                    f"draft={num_draft_tokens} failed error={reuse_row['error']}"
+                )
+            else:
+                print(
+                    f"reuse exit={exit_layer}/{adapter.num_layers} "
+                    f"draft={num_draft_tokens} "
+                    f"tps={reuse_row['tokens_per_second']:.2f} "
+                    f"speedup={reuse_row['speedup_vs_full']:.2f}x "
+                    f"accepted={reuse_row['draft_fraction']:.2%}"
+                )
+
     ok_specs = [row for row in results["speculative"] if row.get("ok", True)]
     if ok_specs:
         results["best_speculative"] = max(
             ok_specs,
+            key=lambda row: row["tokens_per_second"],
+        )
+    ok_reuse_specs = [
+        row for row in results["prefix_reuse_speculative"] if row.get("ok", True)
+    ]
+    if ok_reuse_specs:
+        results["best_prefix_reuse_speculative"] = max(
+            ok_reuse_specs,
             key=lambda row: row["tokens_per_second"],
         )
     return results

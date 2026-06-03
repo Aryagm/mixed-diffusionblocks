@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 
 import mlx.core as mx
 
 from llm_dblocks.adapters import ModelAdapter, create_attention_mask
+
+mlx_cache = importlib.import_module("mlx_lm.models.cache")
 
 
 @dataclass
@@ -54,6 +57,11 @@ class EarlyExitDraftModel:
         return self.adapter.logits_from_hidden(hidden)
 
 
+@dataclass
+class _LayerView:
+    layers: list
+
+
 def early_exit_logits(
     adapter: ModelAdapter,
     input_ids: mx.array,
@@ -75,6 +83,167 @@ def _argmax_next_token(logits: mx.array) -> mx.array:
 
 def _append_token(input_ids: mx.array, token: mx.array) -> mx.array:
     return mx.concatenate([input_ids, token], axis=1)
+
+
+def _run_cached_layers(hidden: mx.array, layers: list, cache: list) -> mx.array:
+    if not layers:
+        return hidden
+    mask = create_attention_mask(hidden, cache[0]) if create_attention_mask else None
+    for layer, layer_cache in zip(layers, cache):
+        try:
+            out = layer(hidden, mask, layer_cache)
+        except TypeError:
+            out = layer(hidden, mask)
+        hidden = out[0] if isinstance(out, tuple) else out
+    return hidden
+
+
+def _prefix_hidden(
+    adapter: ModelAdapter,
+    input_ids: mx.array,
+    *,
+    exit_layer: int,
+    cache: list,
+) -> mx.array:
+    hidden = adapter.embed(input_ids)
+    return _run_cached_layers(hidden, adapter.layers[:exit_layer], cache)
+
+
+def _suffix_logits(
+    adapter: ModelAdapter,
+    hidden: mx.array,
+    *,
+    exit_layer: int,
+    cache: list,
+) -> mx.array:
+    hidden = _run_cached_layers(hidden, adapter.layers[exit_layer:], cache)
+    return adapter.logits_from_hidden(hidden)
+
+
+def _trim(cache: list, num_tokens: int):
+    if num_tokens > 0 and cache:
+        mlx_cache.trim_prompt_cache(cache, num_tokens)
+
+
+def prefix_reuse_speculative_generate_step(
+    prompt: mx.array,
+    adapter: ModelAdapter,
+    *,
+    exit_layer: int,
+    num_draft_tokens: int,
+    max_tokens: int,
+    prefill_step_size: int = 512,
+):
+    """Greedy self-speculation that reuses draft prefix-layer work.
+
+    This generator preserves full-model greedy outputs while avoiding the main
+    overhead in ordinary self-speculation: rerunning the draft prefix layers
+    during verification. It supports batch-1 MLX causal LMs with trimmable KV
+    caches.
+    """
+    if prompt.ndim != 1:
+        raise ValueError("prompt must be a 1D token array")
+    if num_draft_tokens < 1:
+        raise ValueError("num_draft_tokens must be >= 1")
+    if max_tokens < 0:
+        raise ValueError("max_tokens must be >= 0")
+    if exit_layer < 0 or exit_layer > adapter.num_layers:
+        raise ValueError(
+            f"exit_layer must be between 0 and {adapter.num_layers}, got {exit_layer}"
+        )
+    if prompt.size < 1:
+        raise ValueError("prompt must contain at least one token")
+
+    prefix_model = _LayerView(adapter.layers[:exit_layer])
+    suffix_model = _LayerView(adapter.layers[exit_layer:])
+    prefix_cache = mlx_cache.make_prompt_cache(prefix_model)
+    suffix_cache = mlx_cache.make_prompt_cache(suffix_model)
+    if not mlx_cache.can_trim_prompt_cache(prefix_cache):
+        raise ValueError("prefix cache is not trimmable")
+    if not mlx_cache.can_trim_prompt_cache(suffix_cache):
+        raise ValueError("suffix cache is not trimmable")
+
+    # Prefill all prompt tokens except the current generation input token.
+    prefill = prompt[:-1]
+    while prefill.size > 0:
+        n_to_process = min(prefill_step_size, prefill.size)
+        chunk = prefill[:n_to_process][None]
+        hidden = _prefix_hidden(
+            adapter,
+            chunk,
+            exit_layer=exit_layer,
+            cache=prefix_cache,
+        )
+        _suffix_logits(adapter, hidden, exit_layer=exit_layer, cache=suffix_cache)
+        mx.eval([c.state for c in prefix_cache], [c.state for c in suffix_cache])
+        prefill = prefill[n_to_process:]
+        mx.clear_cache()
+
+    current = prompt[-1:].astype(mx.int32)
+    generated = 0
+
+    while generated < max_tokens:
+        remaining = max_tokens - generated
+        draft_count = min(num_draft_tokens, remaining)
+        draft_tokens: list[int] = []
+        draft_inputs = []
+        hidden_steps = []
+        y = current
+
+        for _ in range(draft_count):
+            hidden = _prefix_hidden(
+                adapter,
+                y[None],
+                exit_layer=exit_layer,
+                cache=prefix_cache,
+            )
+            hidden_steps.append(hidden)
+            draft_inputs.append(int(y.item()))
+            logits = adapter.logits_from_hidden(hidden)
+            y = mx.argmax(logits[:, -1, :], axis=-1).astype(mx.int32)
+            mx.eval(y)
+            draft_tokens.append(int(y.item()))
+
+        verify_hidden = mx.concatenate(hidden_steps, axis=1)
+        verify_logits = _suffix_logits(
+            adapter,
+            verify_hidden,
+            exit_layer=exit_layer,
+            cache=suffix_cache,
+        )
+        verify_tokens = mx.argmax(verify_logits, axis=-1)
+        logprobs = verify_logits - mx.logsumexp(verify_logits, axis=-1, keepdims=True)
+        mx.eval(verify_tokens, logprobs)
+        verified = [int(token) for token in verify_tokens[0].tolist()]
+
+        accepted = 0
+        for draft_token, verified_token in zip(draft_tokens, verified):
+            if draft_token != verified_token:
+                break
+            accepted += 1
+            generated += 1
+            yield draft_token, logprobs[0, accepted - 1], True
+            if generated == max_tokens:
+                break
+
+        if generated == max_tokens:
+            break
+
+        if accepted == draft_count:
+            current = mx.array([draft_tokens[-1]], dtype=mx.int32)
+            continue
+
+        replacement = verified[accepted]
+        generated += 1
+        current = mx.array([replacement], dtype=mx.int32)
+        yield replacement, logprobs[0, accepted], False
+
+        # Drafting processed current + draft tokens up to the token before the
+        # last proposal. Keep only the cache entries that are true context for
+        # the next current token.
+        trim_count = draft_count - (accepted + 1)
+        _trim(prefix_cache, trim_count)
+        _trim(suffix_cache, trim_count)
 
 
 def full_greedy_decode(
