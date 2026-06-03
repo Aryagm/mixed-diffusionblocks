@@ -1,0 +1,86 @@
+{
+  "model": "mlx-community/Qwen2.5-1.5B-Instruct-bf16",
+  "data": "corpora/wikitext2/train.txt",
+  "val_data": "corpora/wikitext2/validation.txt",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 1024,
+  "eval_batches": 4,
+  "max_tokens": 400000,
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "objective": "paper_ar",
+      "frame_strategy": "uniform",
+      "block_ranges": [
+        [
+          0,
+          4
+        ],
+        [
+          4,
+          7
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          14
+        ],
+        [
+          14,
+          18
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          21,
+          24
+        ],
+        [
+          24,
+          28
+        ]
+      ],
+      "frame_scores": null,
+      "denoise_weight": 0.0,
+      "clean_lm_weight": 100.0,
+      "clean_lm_anchor_profile": "auto_window",
+      "clean_lm_interval": 1,
+      "clean_lm_seq_len": 128,
+      "clean_lm_window_count": 1,
+      "clean_lm_large_seq_len": 512,
+      "clean_lm_large_interval": 8,
+      "clean_lm_full_warmup_steps": 10,
+      "local_lm_weight": 0.0,
+      "before": 228.0,
+      "after": 198.5,
+      "delta": 29.5,
+      "metrics_before": {
+        "loss": 228.0,
+        "denoise_loss": 0.0,
+        "aux_lm_loss": 0.0,
+        "clean_lm_loss": 2.283203125,
+        "local_lm_loss": 0.0
+      },
+      "metrics_after": {
+        "loss": 198.5,
+        "denoise_loss": 0.0,
+        "aux_lm_loss": 0.0,
+        "clean_lm_loss": 1.984375,
+        "local_lm_loss": 0.0
+      },
+      "diffusion_ce_before": 150.75,
+      "diffusion_ce_after": 150.25,
+      "diffusion_ce_delta": 0.5,
+      "next_token_ce_before": 1.734375,
+      "next_token_ce_after": 1.5859375,
+      "next_token_ce_delta": 0.1484375,
+      "seconds": 27.78062391700223
+    }
+  }
+}

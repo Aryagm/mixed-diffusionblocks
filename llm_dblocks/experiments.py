@@ -129,6 +129,8 @@ def publish_matrix(
                             "manual",
                             "--clean_lm_weight",
                             "0",
+                            "--denoise_weight",
+                            "1",
                         ]
                     ),
                 )
@@ -151,6 +153,8 @@ def publish_matrix(
                             "100",
                             "--clean_lm_seq_len",
                             "0",
+                            "--denoise_weight",
+                            "1",
                         ]
                     ),
                 )
@@ -171,6 +175,10 @@ def publish_matrix(
                             "auto_window",
                             "--clean_lm_weight",
                             "100",
+                            "--denoise_weight",
+                            "0",
+                            "--clean_lm_full_warmup_steps",
+                            "10",
                         ]
                     ),
                 )
@@ -202,6 +210,8 @@ def publish_matrix(
                         "auto_window",
                         "--clean_lm_weight",
                         "100",
+                        "--denoise_weight",
+                        "0",
                         "--output_json",
                         memory_output,
                     ),

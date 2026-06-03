@@ -8,7 +8,9 @@ benchmark harness for Windowed Mixed DiffusionBlocks.
 Use this for full-block bf16 fine-tuning on Apple Silicon when full
 autoregressive backpropagation over the whole model is too memory-heavy. The
 default path updates one transformer block at a time and adds an exact
-next-token CE anchor through the normal model forward pass.
+next-token CE anchor through the normal model forward pass. The default
+fine-tuning objective sets `denoise_weight=0`; the diffusion objective remains
+available as an explicit ablation or regularizer.
 
 Supported production path:
 
@@ -53,19 +55,19 @@ uv run --extra llm mixed-dblocks-train \
 Equivalent explicit default:
 
 ```bash
---clean_lm_anchor_profile auto_window --clean_lm_weight 100
+--clean_lm_anchor_profile auto_window --clean_lm_weight 100 --denoise_weight 0 --clean_lm_full_warmup_steps 10
 ```
 
 Pure DiffusionBlocks remains available as an ablation:
 
 ```bash
---clean_lm_anchor_profile manual --clean_lm_weight 0
+--clean_lm_anchor_profile manual --clean_lm_weight 0 --denoise_weight 1
 ```
 
 Full-sequence mixed anchoring remains available as a quality ablation:
 
 ```bash
---clean_lm_anchor_profile manual --clean_lm_weight 100 --clean_lm_seq_len 0
+--clean_lm_anchor_profile manual --clean_lm_weight 100 --clean_lm_seq_len 0 --denoise_weight 1
 ```
 
 ## Publish Matrix
@@ -135,4 +137,7 @@ Treat broad "default for everyone" claims as blocked until:
 
 The honest current claim is: Windowed Mixed DiffusionBlocks is a practical,
 installable default for full-block bf16 fine-tuning under an Apple Silicon
-memory cap, with reproducible commands and result summarization.
+memory cap, with reproducible commands and result summarization. On the current
+Qwen2.5-1.5B seq1024 smoke test it matches full-anchor mixed CE while running
+far faster than full AR, but it still does not beat full AR's best CE at the
+same 100-step horizon.

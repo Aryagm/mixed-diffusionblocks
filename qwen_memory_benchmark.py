@@ -261,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sigma_min", type=float, default=0.002)
     parser.add_argument("--sigma_max", type=float, default=80.0)
     parser.add_argument("--gamma", type=float, default=0.05)
-    parser.add_argument("--denoise_weight", type=float, default=1.0)
+    parser.add_argument("--denoise_weight", type=float, default=0.0)
     parser.add_argument("--aux_lm_weight", type=float, default=0.1)
     parser.add_argument("--clean_lm_weight", type=float, default=100.0)
     parser.add_argument(

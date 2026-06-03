@@ -4,6 +4,8 @@ Mixed DiffusionBlocks is an experimental MLX training path for fine-tuning
 large bf16 language-model blocks on Apple Silicon. The default LLM path now
 uses **Windowed Mixed DiffusionBlocks**: exact autoregressive CE on deterministic
 clean-token windows, while still training one full transformer block at a time.
+For full fine-tuning, the default disables the denoising term after evidence
+showed the AR anchor is the quality-critical part.
 
 It extends SakanaAI's DiffusionBlocks idea with a practical LLM objective:
 
@@ -60,6 +62,7 @@ Qwen2.5-1.5B, WikiText-2, seq1024, batch 1, 100 steps:
 | Pure DiffusionBlocks | 1.7344 | 1.9609 | 103.56 s |
 | Mixed DiffusionBlocks, full clean anchor | 1.7344 | 1.5859 | 197.90 s |
 | Windowed Mixed, auto-window default | 1.7344 | 1.6016 | 115.97 s |
+| Fast Windowed Blockwise, current default | 1.7344 | 1.5859 | 27.78 s |
 
 Takeaway: pure DiffusionBlocks learns denoising but degrades ordinary LM CE.
 Mixed DiffusionBlocks fixes that failure mode and preserves normal forward-pass
@@ -80,6 +83,10 @@ Same M4 Max 36 GB machine:
 With a 128-token windowed clean anchor at seq2048, Qwen2.5-7B used 22.31 GB
 peak and 6.61 s for the one-step memory test, effectively matching pure
 DiffusionBlocks memory while keeping an exact clean CE anchor.
+
+With the current fast default (`denoise_weight=0`), Qwen2.5-7B seq2048 used
+19.21 GB and 2.02 s for the windowed one-step memory test. The full-clean-anchor
+warmup path used 29.91 GB and 16.56 s, still fitting where full AR was killed.
 
 ## Installation
 
@@ -127,11 +134,13 @@ uv run --extra llm mixed-dblocks-train \
   --num_blocks 8
 ```
 
-By default, the LLM CLIs use `--clean_lm_anchor_profile auto_window` and
-`--clean_lm_weight 100`. The auto-window profile runs a deterministic
-128-token clean CE anchor every block update, with a 512-token anchor every 8
-updates. Use `--clean_lm_anchor_profile manual --clean_lm_weight 0` for a pure
-DiffusionBlocks ablation.
+By default, the LLM CLIs use `--clean_lm_anchor_profile auto_window`,
+`--clean_lm_weight 100`, `--denoise_weight 0`, and
+`--clean_lm_full_warmup_steps 10`. The auto-window profile runs deterministic
+128-token clean CE anchors after warmup, with a 512-token anchor every 8
+updates. Use
+`--clean_lm_anchor_profile manual --clean_lm_weight 0 --denoise_weight 1` for a
+pure DiffusionBlocks ablation.
 
 Installed commands:
 
@@ -182,6 +191,7 @@ uv run --extra llm mixed-dblocks-quality \
   --num_blocks 8 \
   --clean_lm_anchor_profile manual \
   --clean_lm_weight 0 \
+  --denoise_weight 1 \
   --max_tokens 400000
 ```
 
@@ -216,6 +226,7 @@ uv run --extra llm mixed-dblocks-quality \
   --num_blocks 8 \
   --clean_lm_anchor_profile manual \
   --clean_lm_weight 100 \
+  --denoise_weight 1 \
   --max_tokens 400000
 ```
 

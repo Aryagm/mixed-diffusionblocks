@@ -10,7 +10,8 @@ def test_train_parser_defaults_to_auto_window():
 
     assert args.clean_lm_anchor_profile == "auto_window"
     assert args.clean_lm_weight == 100.0
-    assert args.denoise_weight == 1.0
+    assert args.denoise_weight == 0.0
+    assert args.clean_lm_full_warmup_steps == 10
 
 
 def test_qwen_quality_parser_defaults_to_auto_window():
@@ -19,7 +20,8 @@ def test_qwen_quality_parser_defaults_to_auto_window():
 
     assert args.clean_lm_anchor_profile == "auto_window"
     assert args.clean_lm_weight == 100.0
-    assert args.denoise_weight == 1.0
+    assert args.denoise_weight == 0.0
+    assert args.clean_lm_full_warmup_steps == 10
 
 
 def test_memory_parser_can_select_pure_dblocks():

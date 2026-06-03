@@ -190,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num_blocks", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--sigma_max", type=float, default=80.0)
-    parser.add_argument("--denoise_weight", type=float, default=1.0)
+    parser.add_argument("--denoise_weight", type=float, default=0.0)
     parser.add_argument("--clean_lm_weight", type=float, default=100.0)
     parser.add_argument(
         "--clean_lm_anchor_profile",
@@ -202,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clean_lm_window_count", type=int, default=1)
     parser.add_argument("--clean_lm_large_seq_len", type=int, default=0)
     parser.add_argument("--clean_lm_large_interval", type=int, default=0)
-    parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=0)
+    parser.add_argument("--clean_lm_full_warmup_steps", type=int, default=10)
     parser.add_argument("--local_lm_weight", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--layers", type=int, default=6)

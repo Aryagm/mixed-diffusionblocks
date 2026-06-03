@@ -33,8 +33,10 @@ def test_render_commands_contains_safe_auto_window_default():
     commands = render_commands(specs)
 
     assert any("--clean_lm_anchor_profile auto_window" in cmd for cmd in commands)
+    assert any("--denoise_weight 0 --clean_lm_full_warmup_steps 10" in cmd for cmd in commands)
     assert any(
-        "--clean_lm_anchor_profile manual --clean_lm_weight 0" in cmd
+        "--clean_lm_anchor_profile manual --clean_lm_weight 0 --denoise_weight 1"
+        in cmd
         for cmd in commands
     )
 
