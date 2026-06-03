@@ -20,6 +20,7 @@ mixed-dblocks-quality = "qwen_quality_benchmark:main_cli"
 mixed-dblocks-memory = "qwen_memory_benchmark:main_cli"
 mixed-dblocks-tiny-quality = "llm_quality_benchmark:main_cli"
 mixed-dblocks-matrix = "llm_dblocks.experiments:main_cli"
+mixed-dblocks-results = "llm_dblocks.results:main_cli"
 
 [project.optional-dependencies]
 llm = [
