@@ -4,6 +4,7 @@ import mlx.core as mx
 
 from llm_dblocks.adapters import TinyLMAdapter
 from llm_dblocks.speculative import (
+    EarlyExitDraftModel,
     early_exit_logits,
     full_greedy_decode,
     self_speculative_decode,
@@ -53,3 +54,17 @@ def test_self_speculative_full_depth_matches_greedy_decode():
     assert speculative.tokens.tolist() == greedy.tokens.tolist()
     assert speculative.accepted_tokens == 6
     assert speculative.acceptance_rate == 1.0
+
+
+def test_early_exit_draft_model_exposes_prefix_layers_and_logits():
+    adapter = tiny_adapter()
+    draft = EarlyExitDraftModel(adapter, exit_layer=2)
+    input_ids = mx.array([[1, 2, 3, 4]], dtype=mx.int32)
+
+    logits = draft(input_ids)
+    expected = early_exit_logits(adapter, input_ids, exit_layer=2)
+    mx.eval(logits, expected)
+
+    assert len(draft.layers) == 2
+    assert logits.shape == expected.shape
+    assert bool(mx.allclose(logits, expected, atol=1e-5).item())

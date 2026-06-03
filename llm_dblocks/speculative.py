@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import mlx.core as mx
 
-from llm_dblocks.adapters import ModelAdapter
+from llm_dblocks.adapters import ModelAdapter, create_attention_mask
 
 
 @dataclass
@@ -20,6 +20,38 @@ class DecodeResult:
         if self.draft_tokens == 0:
             return 0.0
         return self.accepted_tokens / self.draft_tokens
+
+
+class EarlyExitDraftModel:
+    """Cache-compatible draft model that reuses a prefix of a loaded LM."""
+
+    def __init__(self, adapter: ModelAdapter, *, exit_layer: int):
+        if exit_layer < 0 or exit_layer > adapter.num_layers:
+            raise ValueError(
+                f"exit_layer must be between 0 and {adapter.num_layers}, got {exit_layer}"
+            )
+        self.adapter = adapter
+        self.exit_layer = exit_layer
+        self.layers = adapter.layers[:exit_layer]
+
+    def __call__(
+        self,
+        inputs: mx.array,
+        cache=None,
+        input_embeddings: mx.array | None = None,
+    ) -> mx.array:
+        hidden = self.adapter.embed(inputs) if input_embeddings is None else input_embeddings
+        if cache is None:
+            hidden = self.adapter.run_layers(hidden, 0, self.exit_layer)
+        else:
+            mask = create_attention_mask(hidden, cache[0]) if create_attention_mask else None
+            for layer, layer_cache in zip(self.layers, cache):
+                try:
+                    out = layer(hidden, mask, layer_cache)
+                except TypeError:
+                    out = layer(hidden, mask)
+                hidden = out[0] if isinstance(out, tuple) else out
+        return self.adapter.logits_from_hidden(hidden)
 
 
 def early_exit_logits(
