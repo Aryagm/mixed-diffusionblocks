@@ -175,7 +175,7 @@ def main(args):
             json.dump(results, f, indent=2)
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["full", "dblock", "both"], default="both")
     parser.add_argument("--objective", choices=["paper_ar", "hidden"], default="paper_ar")
@@ -207,4 +207,12 @@ if __name__ == "__main__":
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--intermediate_size", type=int, default=512)
     parser.add_argument("--output_json", default=None)
-    main(parser.parse_args())
+    return parser
+
+
+def main_cli(argv: list[str] | None = None):
+    main(build_parser().parse_args(argv))
+
+
+if __name__ == "__main__":
+    main_cli()

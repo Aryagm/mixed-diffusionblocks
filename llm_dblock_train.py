@@ -82,7 +82,7 @@ def main(args):
         print(f"saved={path}")
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="DiffusionBlocks-style block-wise MLX trainer for causal LMs"
     )
@@ -125,10 +125,18 @@ if __name__ == "__main__":
     parser.add_argument("--hidden_size", type=int, default=128)
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--intermediate_size", type=int, default=512)
-    args = parser.parse_args()
+    return parser
+
+
+def main_cli(argv: list[str] | None = None):
+    args = build_parser().parse_args(argv)
 
     if args.backend == "mlx-lm" and args.model is None:
         raise ValueError("--model is required for --backend mlx-lm")
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
     main(args)
+
+
+if __name__ == "__main__":
+    main_cli()

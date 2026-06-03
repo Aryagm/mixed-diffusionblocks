@@ -364,7 +364,7 @@ def main(args):
             json.dump(results, f, indent=2)
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Small Qwen quality benchmark for full bf16 vs DiffusionBlocks"
     )
@@ -405,4 +405,12 @@ if __name__ == "__main__":
     parser.add_argument("--log_every", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_json", default=None)
-    main(parser.parse_args())
+    return parser
+
+
+def main_cli(argv: list[str] | None = None):
+    main(build_parser().parse_args(argv))
+
+
+if __name__ == "__main__":
+    main_cli()

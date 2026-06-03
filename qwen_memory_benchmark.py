@@ -241,7 +241,7 @@ def main(args):
             json.dump(results, f, indent=2)
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Compare full fine-tuning vs DiffusionBlocks peak memory on mlx-lm models"
     )
@@ -276,4 +276,12 @@ if __name__ == "__main__":
     parser.add_argument("--objective", choices=["paper_ar", "hidden"], default="paper_ar")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_json", default=None)
-    main(parser.parse_args())
+    return parser
+
+
+def main_cli(argv: list[str] | None = None):
+    main(build_parser().parse_args(argv))
+
+
+if __name__ == "__main__":
+    main_cli()
