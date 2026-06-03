@@ -1,0 +1,199 @@
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "num_layers": 24,
+  "prompt_len": 32,
+  "max_new_tokens": 8,
+  "prefill_step_size": 512,
+  "repeats": 1,
+  "warmup": 0,
+  "exit_layers": [
+    6,
+    12
+  ],
+  "draft_tokens": [
+    2,
+    4
+  ],
+  "full": {
+    "tokens": [
+      198,
+      12,
+      8162,
+      37150,
+      374,
+      264,
+      25993,
+      315
+    ],
+    "num_tokens": 8,
+    "total_seconds": 0.14420666600199183,
+    "first_token_seconds": 0.11541950000537327,
+    "tokens_per_second": 55.47593756788955,
+    "from_draft": 0,
+    "draft_fraction": 0.0,
+    "peak_gb": 1.073278628
+  },
+  "draft_only": [
+    {
+      "exit_layer": 6,
+      "layer_fraction": 0.25,
+      "tokens": [
+        71265,
+        86410,
+        36770,
+        138198,
+        79339,
+        111503,
+        46660,
+        6160
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.018924834002973512,
+      "first_token_seconds": 0.0072070420064846985,
+      "tokens_per_second": 422.72497601527294,
+      "from_draft": 0,
+      "draft_fraction": 0.0,
+      "peak_gb": 1.01384507,
+      "speedup_vs_full": 7.619969928366809
+    },
+    {
+      "exit_layer": 12,
+      "layer_fraction": 0.5,
+      "tokens": [
+        72322,
+        82379,
+        98952,
+        37633,
+        124237,
+        98899,
+        98685,
+        86410
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.02520487500441959,
+      "first_token_seconds": 0.008081958003458567,
+      "tokens_per_second": 317.39891582867307,
+      "from_draft": 0,
+      "draft_fraction": 0.0,
+      "peak_gb": 1.0212119,
+      "speedup_vs_full": 5.721379930537472
+    }
+  ],
+  "speculative": [
+    {
+      "exit_layer": 6,
+      "layer_fraction": 0.25,
+      "num_draft_tokens": 2,
+      "tokens": [
+        374,
+        264,
+        501,
+        9471,
+        315,
+        8162,
+        11773,
+        11
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.11176554200210376,
+      "first_token_seconds": 0.026240042003337294,
+      "tokens_per_second": 71.57841188520713,
+      "from_draft": 0,
+      "draft_fraction": 0.0,
+      "peak_gb": 1.057234388,
+      "speedup_vs_full": 1.2902605169603834
+    },
+    {
+      "exit_layer": 6,
+      "layer_fraction": 0.25,
+      "num_draft_tokens": 4,
+      "tokens": [
+        198,
+        12,
+        8162,
+        37150,
+        374,
+        264,
+        25993,
+        315
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.23868408300040755,
+      "first_token_seconds": 0.13706591600202955,
+      "tokens_per_second": 33.51710721316235,
+      "from_draft": 0,
+      "draft_fraction": 0.0,
+      "peak_gb": 1.057643476,
+      "speedup_vs_full": 0.6041737856551818
+    },
+    {
+      "exit_layer": 12,
+      "layer_fraction": 0.5,
+      "num_draft_tokens": 2,
+      "tokens": [
+        374,
+        264,
+        501,
+        9471,
+        315,
+        8162,
+        11773,
+        11
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.1224393339944072,
+      "first_token_seconds": 0.028575625001394656,
+      "tokens_per_second": 65.33848020085951,
+      "from_draft": 0,
+      "draft_fraction": 0.0,
+      "peak_gb": 1.058429908,
+      "speedup_vs_full": 1.1777805489253879
+    },
+    {
+      "exit_layer": 12,
+      "layer_fraction": 0.5,
+      "num_draft_tokens": 4,
+      "tokens": [
+        198,
+        12,
+        8162,
+        37150,
+        374,
+        264,
+        25993,
+        315
+      ],
+      "num_tokens": 8,
+      "total_seconds": 0.15393854200374335,
+      "first_token_seconds": 0.03565970899944659,
+      "tokens_per_second": 51.96879154413105,
+      "from_draft": 1,
+      "draft_fraction": 0.125,
+      "peak_gb": 1.058429908,
+      "speedup_vs_full": 0.9367807705914555
+    }
+  ],
+  "best_speculative": {
+    "exit_layer": 6,
+    "layer_fraction": 0.25,
+    "num_draft_tokens": 2,
+    "tokens": [
+      374,
+      264,
+      501,
+      9471,
+      315,
+      8162,
+      11773,
+      11
+    ],
+    "num_tokens": 8,
+    "total_seconds": 0.11176554200210376,
+    "first_token_seconds": 0.026240042003337294,
+    "tokens_per_second": 71.57841188520713,
+    "from_draft": 0,
+    "draft_fraction": 0.0,
+    "peak_gb": 1.057234388,
+    "speedup_vs_full": 1.2902605169603834
+  }
+}
