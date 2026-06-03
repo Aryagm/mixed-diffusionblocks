@@ -107,7 +107,7 @@ uv sync --extra torch
 Tiny local smoke test:
 
 ```bash
-uv run --extra llm llm_dblock_train.py \
+uv run --extra llm mixed-dblocks-train \
   --backend tiny \
   --iters 20 \
   --batch_size 4 \
@@ -117,7 +117,7 @@ uv run --extra llm llm_dblock_train.py \
 Run Mixed DiffusionBlocks on an `mlx-lm` model:
 
 ```bash
-uv run --extra llm llm_dblock_train.py \
+uv run --extra llm mixed-dblocks-train \
   --backend mlx-lm \
   --model mlx-community/Qwen2.5-1.5B-Instruct-bf16 \
   --data train.txt \
@@ -133,6 +133,16 @@ By default, the LLM CLIs use `--clean_lm_anchor_profile auto_window` and
 updates. Use `--clean_lm_anchor_profile manual --clean_lm_weight 0` for a pure
 DiffusionBlocks ablation.
 
+Installed commands:
+
+```bash
+uv run --extra llm mixed-dblocks-train --help
+uv run --extra llm mixed-dblocks-quality --help
+uv run --extra llm mixed-dblocks-memory --help
+uv run --extra llm mixed-dblocks-matrix --help
+uv run --extra llm mixed-dblocks-results --help
+```
+
 ## Reproduce The WikiText-2 Runs
 
 Prepare local WikiText-2 text files:
@@ -144,7 +154,7 @@ uv run --extra llm scripts/prepare_wikitext2.py
 Full bf16 AR baseline:
 
 ```bash
-uv run --extra llm qwen_quality_benchmark.py \
+uv run --extra llm mixed-dblocks-quality \
   --mode full \
   --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
   --data corpora/wikitext2/train.txt \
@@ -160,7 +170,7 @@ uv run --extra llm qwen_quality_benchmark.py \
 Pure DiffusionBlocks:
 
 ```bash
-uv run --extra llm qwen_quality_benchmark.py \
+uv run --extra llm mixed-dblocks-quality \
   --mode dblock \
   --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
   --data corpora/wikitext2/train.txt \
@@ -178,7 +188,7 @@ uv run --extra llm qwen_quality_benchmark.py \
 Default Windowed Mixed DiffusionBlocks:
 
 ```bash
-uv run --extra llm qwen_quality_benchmark.py \
+uv run --extra llm mixed-dblocks-quality \
   --mode dblock \
   --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
   --data corpora/wikitext2/train.txt \
@@ -194,7 +204,7 @@ uv run --extra llm qwen_quality_benchmark.py \
 Full-sequence Mixed DiffusionBlocks ablation:
 
 ```bash
-uv run --extra llm qwen_quality_benchmark.py \
+uv run --extra llm mixed-dblocks-quality \
   --mode dblock \
   --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
   --data corpora/wikitext2/train.txt \
@@ -212,7 +222,7 @@ uv run --extra llm qwen_quality_benchmark.py \
 ## Memory Boundary Test
 
 ```bash
-uv run --extra llm qwen_memory_benchmark.py \
+uv run --extra llm mixed-dblocks-memory \
   --mode dblock \
   --model mlx-community/Qwen2.5-7B-Instruct-bf16 \
   --batch_size 1 \
@@ -225,6 +235,41 @@ Quantized 4-bit Qwen weights are not suitable for this full-block trainer
 because MLX does not expose gradients for quantized matmul weights. Use
 bf16/unquantized MLX weights for block training.
 
+## Publish Matrix And Results
+
+Generate the current quality ablation matrix without running it:
+
+```bash
+uv run --extra llm mixed-dblocks-matrix \
+  --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
+  --model mlx-community/Qwen2.5-1.5B-Instruct-bf16 \
+  --seed 1 \
+  --seed 2 \
+  --seed 3 \
+  --data corpora/wikitext2/train.txt \
+  --val_data corpora/wikitext2/validation.txt \
+  --output_dir docs/results/publish
+```
+
+Run a bounded prefix:
+
+```bash
+uv run --extra llm mixed-dblocks-matrix \
+  --model mlx-community/Qwen2.5-0.5B-Instruct-bf16 \
+  --seed 1 \
+  --data corpora/wikitext2/train.txt \
+  --val_data corpora/wikitext2/validation.txt \
+  --output_dir docs/results/publish \
+  --max_runs 4 \
+  --run
+```
+
+Summarize JSON results as a markdown table:
+
+```bash
+uv run --extra llm mixed-dblocks-results docs/results/*.json
+```
+
 ## Repository Layout
 
 | Path | Purpose |
@@ -233,6 +278,8 @@ bf16/unquantized MLX weights for block training.
 | `llm_dblock_train.py` | Main LLM training CLI |
 | `qwen_quality_benchmark.py` | Full AR vs DiffusionBlocks quality benchmark |
 | `qwen_memory_benchmark.py` | One-step peak-memory benchmark |
+| `llm_dblocks/experiments.py` | Publish-matrix command generation |
+| `llm_dblocks/results.py` | JSON result summarization |
 | `mlx_*` | Apple MLX ViT/DiffusionBlocks image-classification port |
 | `main.py`, `model.py`, `vit.py`, `dblock_modules.py` | Original upstream PyTorch implementation |
 | `docs/` | Benchmark notes, method alignment, launch notes, saved JSON results |
@@ -255,6 +302,8 @@ Still needed:
 - LoRA/QLoRA baselines,
 - longer 3B/7B quality curves,
 - closing the remaining 1.5B seq1024 CE gap between auto-window and full AR.
+
+See `docs/production_readiness.md` for the production contract and publish gate.
 
 ## Attribution
 
