@@ -16,6 +16,7 @@ from llm_dblocks.adapters import load_mlx_lm_adapter
 from llm_dblocks.data import load_text, tokenize_text
 from llm_dblocks.speculative import (
     EarlyExitDraftModel,
+    cached_greedy_generate_step,
     prefix_reuse_speculative_generate_step,
 )
 
@@ -151,6 +152,15 @@ def full_generator(adapter, prompt: mx.array, args):
     )
 
 
+def fast_full_generator(adapter, prompt: mx.array, args):
+    return cached_greedy_generate_step(
+        prompt,
+        adapter,
+        max_tokens=args.max_new_tokens,
+        prefill_step_size=args.prefill_step_size,
+    )
+
+
 def draft_generator(draft_model, prompt: mx.array, args):
     return mlx_generate.generate_step(
         prompt,
@@ -213,6 +223,7 @@ def run(args) -> dict:
         "exit_layers": exit_layers,
         "draft_tokens": draft_token_counts,
         "full": {},
+        "fast_full": {},
         "draft_only": [],
         "speculative": [],
         "prefix_reuse_speculative": [],
@@ -227,6 +238,19 @@ def run(args) -> dict:
     print(
         f"full tps={full.tokens_per_second:.2f} "
         f"seconds={full.total_seconds:.3f} peak_gb={full.peak_gb:.2f}"
+    )
+
+    fast_full = best_run(
+        lambda: fast_full_generator(adapter, prompt, args),
+        repeats=args.repeats,
+        warmup=args.warmup,
+    )
+    results["fast_full"] = fast_full.to_json()
+    print(
+        f"fast_full tps={fast_full.tokens_per_second:.2f} "
+        f"seconds={fast_full.total_seconds:.3f} "
+        f"speedup_vs_full={fast_full.tokens_per_second / full.tokens_per_second:.2f}x "
+        f"peak_gb={fast_full.peak_gb:.2f}"
     )
 
     for exit_layer in exit_layers:
@@ -244,6 +268,8 @@ def run(args) -> dict:
                 "layer_fraction": exit_layer / adapter.num_layers,
                 **draft.to_json(),
                 "speedup_vs_full": draft.tokens_per_second / full.tokens_per_second,
+                "speedup_vs_fast_full": draft.tokens_per_second
+                / fast_full.tokens_per_second,
             }
             results["draft_only"].append(draft_row)
             print(
@@ -273,6 +299,8 @@ def run(args) -> dict:
                         **spec.to_json(),
                         "speedup_vs_full": spec.tokens_per_second
                         / full.tokens_per_second,
+                        "speedup_vs_fast_full": spec.tokens_per_second
+                        / fast_full.tokens_per_second,
                     }
                 except Exception as exc:
                     row = {
@@ -318,6 +346,8 @@ def run(args) -> dict:
                     **reuse.to_json(),
                     "speedup_vs_full": reuse.tokens_per_second
                     / full.tokens_per_second,
+                    "speedup_vs_fast_full": reuse.tokens_per_second
+                    / fast_full.tokens_per_second,
                 }
             except Exception as exc:
                 reuse_row = {
@@ -339,6 +369,7 @@ def run(args) -> dict:
                     f"draft={num_draft_tokens} "
                     f"tps={reuse_row['tokens_per_second']:.2f} "
                     f"speedup={reuse_row['speedup_vs_full']:.2f}x "
+                    f"fast_speedup={reuse_row['speedup_vs_fast_full']:.2f}x "
                     f"accepted={reuse_row['draft_fraction']:.2%}"
                 )
 

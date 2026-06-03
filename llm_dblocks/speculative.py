@@ -125,6 +125,47 @@ def _trim(cache: list, num_tokens: int):
         mlx_cache.trim_prompt_cache(cache, num_tokens)
 
 
+def cached_greedy_generate_step(
+    prompt: mx.array,
+    adapter: ModelAdapter,
+    *,
+    max_tokens: int,
+    prefill_step_size: int = 512,
+):
+    """Greedy cached generation without per-token logprob materialization."""
+    if prompt.ndim != 1:
+        raise ValueError("prompt must be a 1D token array")
+    if prompt.size < 1:
+        raise ValueError("prompt must contain at least one token")
+    if max_tokens < 0:
+        raise ValueError("max_tokens must be >= 0")
+
+    model_view = _LayerView(adapter.layers)
+    model_cache = mlx_cache.make_prompt_cache(model_view)
+
+    prefill = prompt[:-1]
+    while prefill.size > 0:
+        n_to_process = min(prefill_step_size, prefill.size)
+        chunk = prefill[:n_to_process][None]
+        try:
+            adapter.model(chunk, cache=model_cache)
+        except TypeError:
+            adapter.model(chunk)
+        mx.eval([c.state for c in model_cache])
+        prefill = prefill[n_to_process:]
+        mx.clear_cache()
+
+    current = prompt[-1:].astype(mx.int32)
+    for _ in range(max_tokens):
+        try:
+            logits = adapter.model(current[None], cache=model_cache)
+        except TypeError:
+            logits = adapter.model(current[None])
+        current = mx.argmax(logits[:, -1, :], axis=-1).astype(mx.int32)
+        mx.eval(current)
+        yield int(current.item()), None, False
+
+
 def prefix_reuse_speculative_generate_step(
     prompt: mx.array,
     adapter: ModelAdapter,

@@ -5,6 +5,7 @@ import mlx.core as mx
 from llm_dblocks.adapters import TinyLMAdapter
 from llm_dblocks.speculative import (
     EarlyExitDraftModel,
+    cached_greedy_generate_step,
     early_exit_logits,
     full_greedy_decode,
     prefix_reuse_speculative_generate_step,
@@ -87,5 +88,22 @@ def test_prefix_reuse_speculative_rejects_nonpositive_draft_count():
         )
     except ValueError as exc:
         assert "num_draft_tokens" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_cached_greedy_rejects_empty_prompt():
+    adapter = tiny_adapter()
+
+    try:
+        list(
+            cached_greedy_generate_step(
+                mx.array([], dtype=mx.int32),
+                adapter,
+                max_tokens=4,
+            )
+        )
+    except ValueError as exc:
+        assert "prompt" in str(exc)
     else:
         raise AssertionError("expected ValueError")
