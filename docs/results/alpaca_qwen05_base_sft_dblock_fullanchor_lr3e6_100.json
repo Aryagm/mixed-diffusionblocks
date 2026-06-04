@@ -1,0 +1,70 @@
+{
+  "task": "alpaca_sft_response_ce",
+  "dataset": "tatsu-lab/alpaca",
+  "data_dir": "corpora/alpaca_sft_smoke",
+  "model": "mlx-community/Qwen2.5-0.5B-bf16",
+  "qlora_model": "mlx-community/Qwen2.5-0.5B-4bit",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 512,
+  "eval_batches": 16,
+  "split_counts": {
+    "train": 2048,
+    "valid": 256,
+    "test": 256
+  },
+  "modes": {
+    "dblock": {
+      "ok": true,
+      "method": "fast_windowed_blockwise",
+      "model": "mlx-community/Qwen2.5-0.5B-bf16",
+      "response_ce_before": 2.6216985350474715,
+      "response_ce_after": 1.8492414020001888,
+      "response_ce_delta": 0.7724571330472827,
+      "seconds": 19.044661207997706,
+      "peak_gb": 4.207719284,
+      "objective": "paper_ar",
+      "block_ranges": [
+        [
+          0,
+          3
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          6,
+          9
+        ],
+        [
+          9,
+          12
+        ],
+        [
+          12,
+          15
+        ],
+        [
+          15,
+          18
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          21,
+          24
+        ]
+      ],
+      "denoise_weight": 0.0,
+      "clean_lm_weight": 100.0,
+      "clean_lm_anchor_profile": "manual",
+      "clean_lm_seq_len": 0,
+      "clean_lm_large_seq_len": 0,
+      "clean_lm_large_interval": 0,
+      "clean_lm_full_warmup_steps": 0
+    }
+  }
+}

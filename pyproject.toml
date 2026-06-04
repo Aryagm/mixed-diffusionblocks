@@ -14,9 +14,24 @@ dependencies = [
     "scipy>=1.16.2",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["llm_dblocks"]
+py-modules = [
+    "llm_dblock_train",
+    "llm_quality_benchmark",
+    "qwen_memory_benchmark",
+    "qwen_quality_benchmark",
+    "sft_quality_benchmark",
+]
+
 [project.scripts]
 mixed-dblocks-train = "llm_dblock_train:main_cli"
 mixed-dblocks-quality = "qwen_quality_benchmark:main_cli"
+mixed-dblocks-sft-quality = "sft_quality_benchmark:main_cli"
 mixed-dblocks-memory = "qwen_memory_benchmark:main_cli"
 mixed-dblocks-tiny-quality = "llm_quality_benchmark:main_cli"
 mixed-dblocks-matrix = "llm_dblocks.experiments:main_cli"

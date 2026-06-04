@@ -2,6 +2,7 @@ import llm_dblock_train
 import llm_quality_benchmark
 import qwen_memory_benchmark
 import qwen_quality_benchmark
+import sft_quality_benchmark
 
 
 def test_train_parser_defaults_to_auto_window():
@@ -47,3 +48,13 @@ def test_tiny_quality_parser_has_auto_window_default():
 
     assert args.clean_lm_anchor_profile == "auto_window"
     assert args.clean_lm_weight == 100.0
+
+
+def test_sft_quality_parser_includes_lora_baselines():
+    parser = sft_quality_benchmark.build_parser()
+    args = parser.parse_args([])
+
+    assert args.mode == "all"
+    assert args.clean_lm_anchor_profile == "auto_window"
+    assert args.denoise_weight == 0.0
+    assert args.qlora_model.endswith("-4bit")

@@ -28,6 +28,25 @@ def scalar(x) -> float:
     return float(x.item())
 
 
+def masked_cross_entropy(
+    logits: mx.array,
+    labels: mx.array,
+    vocab_size: int,
+    loss_mask: mx.array | None = None,
+) -> mx.array:
+    losses = nn.losses.cross_entropy(
+        logits.reshape(-1, vocab_size),
+        labels.reshape(-1),
+        reduction="none",
+    )
+    if loss_mask is None:
+        return mx.mean(losses)
+
+    weights = loss_mask.reshape(-1).astype(mx.float32)
+    denom = mx.maximum(mx.sum(weights), mx.array(1.0, dtype=mx.float32))
+    return mx.sum(losses.astype(mx.float32) * weights) / denom
+
+
 @dataclass
 class DBlockTrainingConfig:
     num_blocks: int = 3
@@ -274,10 +293,13 @@ class DBlockTrainer:
             offset = block_idx * max(anchor_len // 2, 1) + window_idx * anchor_len
             start = ((anchor_step - 1) * anchor_len + offset) % span
         end = start + anchor_len
-        return {
+        cropped = {
             "input_ids": batch["input_ids"][:, start:end],
             "labels": batch["labels"][:, start:end],
         }
+        if "loss_mask" in batch:
+            cropped["loss_mask"] = batch["loss_mask"][:, start:end]
+        return cropped
 
     def clean_next_token_loss(
         self,
@@ -302,10 +324,11 @@ class DBlockTrainer:
                 window_idx=window_idx,
             )
             logits = model(anchor_batch["input_ids"])
-            loss = nn.losses.cross_entropy(
-                logits.reshape(-1, self.adapter.vocab_size),
-                anchor_batch["labels"].reshape(-1),
-                reduction="mean",
+            loss = masked_cross_entropy(
+                logits,
+                anchor_batch["labels"],
+                self.adapter.vocab_size,
+                anchor_batch.get("loss_mask"),
             )
             total = loss if total is None else total + loss
         return total / window_count
@@ -374,10 +397,11 @@ class DBlockTrainer:
         denoise_loss = mx.mean(weights * (denoised - clean_target) ** 2)
 
         logits = self.adapter.logits_from_hidden(denoised)
-        aux_lm_loss = nn.losses.cross_entropy(
-            logits.reshape(-1, self.adapter.vocab_size),
-            labels.reshape(-1),
-            reduction="mean",
+        aux_lm_loss = masked_cross_entropy(
+            logits,
+            labels,
+            self.adapter.vocab_size,
+            batch.get("loss_mask"),
         )
         if self.should_use_clean_lm(use_clean_lm):
             clean_lm_loss = self.clean_next_token_loss(
@@ -466,8 +490,17 @@ class DBlockTrainer:
             reduction="none",
         )
         losses = losses.reshape(input_ids.shape[0], -1)
-        token_loss = mx.mean(losses * weights.reshape(-1, 1))
-        ce_loss = mx.mean(losses)
+        if "loss_mask" in batch:
+            denoise_mask = batch["loss_mask"][:, :-1].astype(mx.float32)
+            mask_denom = mx.maximum(mx.sum(denoise_mask), mx.array(1.0, dtype=mx.float32))
+            ce_loss = mx.sum(losses.astype(mx.float32) * denoise_mask) / mask_denom
+            token_loss = (
+                mx.sum(losses.astype(mx.float32) * weights.reshape(-1, 1) * denoise_mask)
+                / mask_denom
+            )
+        else:
+            token_loss = mx.mean(losses * weights.reshape(-1, 1))
+            ce_loss = mx.mean(losses)
         if self.should_use_clean_lm(use_clean_lm):
             clean_lm_loss = self.clean_next_token_loss(
                 model,
@@ -480,10 +513,11 @@ class DBlockTrainer:
             clean_lm_loss = mx.array(0.0, dtype=token_loss.dtype)
         if self.config.local_lm_weight > 0:
             local_logits = self.adapter.logits_from_hidden(clean_hidden)
-            local_lm_loss = nn.losses.cross_entropy(
-                local_logits.reshape(-1, self.adapter.vocab_size),
-                batch["labels"].reshape(-1),
-                reduction="mean",
+            local_lm_loss = masked_cross_entropy(
+                local_logits,
+                batch["labels"],
+                self.adapter.vocab_size,
+                batch.get("loss_mask"),
             )
         else:
             local_lm_loss = mx.array(0.0, dtype=token_loss.dtype)

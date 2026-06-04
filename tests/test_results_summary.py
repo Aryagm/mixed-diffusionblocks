@@ -68,6 +68,34 @@ def test_load_result_rows_extracts_memory_peak(tmp_path: Path):
     assert rows[0]["after"] is None
 
 
+def test_load_result_rows_extracts_sft_response_metrics(tmp_path: Path):
+    path = tmp_path / "sft.json"
+    path.write_text(
+        """
+{
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-bf16",
+  "seq_len": 512,
+  "modes": {
+    "lora": {
+      "ok": true,
+      "response_ce_before": 1.9,
+      "response_ce_after": 1.7,
+      "seconds": 8.0,
+      "peak_gb": 2.0
+    }
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    rows = load_result_rows([path])
+
+    assert rows[0]["before"] == 1.9
+    assert rows[0]["after"] == 1.7
+    assert rows[0]["peak_gb"] == 2.0
+
+
 def test_markdown_table_renders_rows():
     table = markdown_table(
         [

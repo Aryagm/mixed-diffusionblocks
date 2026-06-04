@@ -8,6 +8,7 @@ from llm_dblocks.trainer import (
     DBlockTrainingConfig,
     balanced_block_ranges,
     block_ranges_from_boundaries,
+    masked_cross_entropy,
     scalar,
 )
 
@@ -24,6 +25,12 @@ def long_tiny_batch():
         "input_ids": mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32),
         "labels": mx.array([[2, 3, 4, 5, 6, 7]], dtype=mx.int32),
     }
+
+
+def masked_long_tiny_batch():
+    batch = long_tiny_batch()
+    batch["loss_mask"] = mx.array([[0, 0, 1, 1, 0, 0]], dtype=mx.float32)
+    return batch
 
 
 def tiny_adapter():
@@ -153,6 +160,33 @@ def test_clean_anchor_batch_can_use_short_random_window():
 
     assert cropped["input_ids"].shape == (1, 3)
     assert cropped["labels"].shape == (1, 3)
+
+
+def test_clean_anchor_batch_crops_loss_mask_with_tokens():
+    trainer = DBlockTrainer(
+        tiny_adapter(),
+        DBlockTrainingConfig(num_blocks=2, clean_lm_seq_len=3),
+    )
+
+    cropped = trainer.clean_anchor_batch(
+        masked_long_tiny_batch(),
+        anchor_step=1,
+        block_idx=0,
+    )
+
+    assert cropped["loss_mask"].tolist() == [[0.0, 0.0, 1.0]]
+
+
+def test_masked_cross_entropy_ignores_unmasked_tokens():
+    logits = mx.array([[[10.0, 0.0], [0.0, 10.0]]])
+    labels = mx.array([[0, 0]], dtype=mx.int32)
+    loss_mask = mx.array([[1.0, 0.0]], dtype=mx.float32)
+
+    masked = masked_cross_entropy(logits, labels, 2, loss_mask)
+    unmasked = masked_cross_entropy(logits, labels, 2)
+    mx.eval(masked, unmasked)
+
+    assert scalar(masked) < scalar(unmasked)
 
 
 def test_clean_anchor_batch_uses_deterministic_window_from_step():

@@ -69,6 +69,26 @@ Mixed DiffusionBlocks fixes that failure mode and preserves normal forward-pass
 behavior. Windowed Mixed is the practical default when memory and wall-clock
 matter; full-sequence anchoring remains the quality ablation.
 
+### Alpaca SFT Baseline
+
+Qwen2.5-0.5B base, Alpaca chat SFT, response-only validation CE, seq512,
+batch 1, 2048 train examples, 256 validation examples:
+
+| Method | Steps | Response CE before | Response CE after | Time | Peak memory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Full bf16 AR | 100 | 2.6217 | 1.6144 | 30.96 s | 5.13 GB |
+| Windowed blockwise | 100 | 2.6217 | 2.0890 | 8.44 s | 4.13 GB |
+| Windowed blockwise, equal time | 360 | 2.6217 | 1.9377 | 31.20 s | 4.21 GB |
+| Full-anchor blockwise | 100 | 2.6217 | 1.8492 | 19.04 s | 4.21 GB |
+| Full-anchor blockwise, equal time | 160 | 2.6217 | 1.8349 | 28.30 s | 4.21 GB |
+| LoRA | 100 | 2.6217 | 1.7279 | 5.58 s | 2.22 GB |
+| QLoRA, 4-bit base | 100 | 2.8224 | 1.7889 | 5.31 s | 1.61 GB |
+
+Takeaway: this task is a useful negative result for overclaiming. The current
+blockwise method is faster and lower-memory than full bf16 AR, but it does not
+beat tuned full AR or LoRA on this small SFT benchmark. The strongest blockwise
+SFT variant is the full-anchor version, not the fastest windowed default.
+
 ### Memory
 
 Same M4 Max 36 GB machine:
@@ -147,6 +167,7 @@ Installed commands:
 ```bash
 uv run --extra llm mixed-dblocks-train --help
 uv run --extra llm mixed-dblocks-quality --help
+uv run --extra llm mixed-dblocks-sft-quality --help
 uv run --extra llm mixed-dblocks-memory --help
 uv run --extra llm mixed-dblocks-matrix --help
 uv run --extra llm mixed-dblocks-results --help
@@ -308,11 +329,10 @@ This is a research prototype. The current evidence supports:
 
 Still needed:
 
-- instruction-tuning datasets,
 - generation-quality evaluation,
-- LoRA/QLoRA baselines,
 - longer 3B/7B quality curves,
 - closing the remaining 1.5B seq1024 CE gap between auto-window and full AR.
+- improving SFT quality against LoRA/QLoRA on small models.
 
 See `docs/production_readiness.md` for the production contract and publish gate.
 

@@ -25,8 +25,18 @@ def _row_from_mode(path: Path, payload: dict[str, Any], mode: str, result: dict[
         "profile": result.get("clean_lm_anchor_profile")
         or payload.get("clean_lm_anchor_profile")
         or "",
-        "before": _metric(result, "next_token_ce_before", "before"),
-        "after": _metric(result, "next_token_ce_after", "after"),
+        "before": _metric(
+            result,
+            "response_ce_before",
+            "next_token_ce_before",
+        )
+        or result.get("before"),
+        "after": _metric(
+            result,
+            "response_ce_after",
+            "next_token_ce_after",
+        )
+        or result.get("after"),
         "seconds": result.get("seconds"),
         "peak_gb": result.get("peak_gb") or payload.get("peak_gb"),
     }

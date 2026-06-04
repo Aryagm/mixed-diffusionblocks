@@ -1,0 +1,28 @@
+{
+  "task": "alpaca_sft_response_ce",
+  "dataset": "tatsu-lab/alpaca",
+  "data_dir": "corpora/alpaca_sft_smoke",
+  "model": "mlx-community/Qwen2.5-0.5B-bf16",
+  "qlora_model": "mlx-community/Qwen2.5-0.5B-4bit",
+  "steps": 100,
+  "batch_size": 1,
+  "seq_len": 512,
+  "eval_batches": 16,
+  "split_counts": {
+    "train": 2048,
+    "valid": 256,
+    "test": 256
+  },
+  "modes": {
+    "full": {
+      "ok": true,
+      "method": "full_ar",
+      "model": "mlx-community/Qwen2.5-0.5B-bf16",
+      "response_ce_before": 2.6216985350474715,
+      "response_ce_after": 1.6144459638744593,
+      "response_ce_delta": 1.0072525711730123,
+      "seconds": 30.958340542012593,
+      "peak_gb": 5.125055066
+    }
+  }
+}
